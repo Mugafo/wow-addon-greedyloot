@@ -1,0 +1,44 @@
+name: Zip and create release
+
+on:
+  push:
+    tags: [ v* ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Package
+        id: build
+        run: |
+          # Get the tag version
+          tag=$(git describe --tags --abbrev=0)
+          
+          # Update TOC version from 0.0.0 to the actual tag version
+          sed -i "s/^## Version: 0.0.0/## Version: $tag/" GreedyLoot.toc
+          echo "Updated GreedyLoot.toc version from 0.0.0 to $tag"
+          
+          # Create GreedyLoot folder and move all files except git files
+          mkdir -p GreedyLoot
+          mv GreedyLoot* GreedyLoot/ 2>/dev/null || true
+          mv README.md GreedyLoot/ 2>/dev/null || true
+          mv LICENSE GreedyLoot/ 2>/dev/null || true
+          
+          # Create zip file of the GreedyLoot folder
+          zip -r GreedyLoot-$tag.zip GreedyLoot/
+          echo "Created GreedyLoot-$tag.zip"
+          
+          # Set output for next step
+          echo "version=$tag" >> $GITHUB_OUTPUT
+            
+      - name: Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: GreedyLoot-${{ steps.build.outputs.version }}.zip
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

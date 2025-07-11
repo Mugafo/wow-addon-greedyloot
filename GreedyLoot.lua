@@ -501,8 +501,6 @@ local function GL_HookedLootSlot(slot)
 end
 LootSlot = GL_HookedLootSlot
 
-
-
 -- ============================================================================
 -- AUTO-PASS/GREED DECISION LOGIC
 -- ============================================================================
@@ -790,8 +788,6 @@ local function GL_ShouldGreedOther(itemLink, itemClassID, quality, isUsable, isR
     return true
 end
 
-
-
 -- Main decision function for auto-greed
 local function GL_ShouldAutoGreed(rollId)
     local name, texture, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed, reasonGreed, reasonDisenchant = GetLootRollItemInfo(rollId)
@@ -905,7 +901,6 @@ local function GL_HandleLootRoll(rollId)
         GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - No auto-pass or auto-greed action taken", itemName))
     end
 end
-
 
 -- ============================================================================
 -- LOOT ROLL EVENT HANDLERS
