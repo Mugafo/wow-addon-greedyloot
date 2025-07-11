@@ -1,0 +1,11 @@
+## Interface: 50500
+## Title: Greedy Loot
+## Notes: Automates loot roll confirmations and adds auto-greeding/passing options
+## Author: Mugafo
+## Version: 1.0.0
+## X-Website: https://github.com/Mugafo/wow-addon-greedyloot
+## SavedVariables: GreedyLootDB
+## Dependencies: Ace3
+
+GreedyOptions.lua
+GreedyLoot.lua

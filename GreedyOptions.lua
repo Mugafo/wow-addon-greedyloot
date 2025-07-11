@@ -1,0 +1,392 @@
+-- Quality display strings for dropdown options
+local QUALITY_DISPLAY = {
+    [1] = "|cffffffffCommon|r",
+    [2] = "|cff1eff00Uncommon|r",
+    [3] = "|cff0070ddRare|r",
+    [4] = "|cffa335eeEpic|r",
+    [5] = "|cffff8000Legendary|r",
+}
+
+-- Gets addon data from TOC file
+local VERSION = GetAddOnMetadata("GreedyLoot", "Version")
+local AUTHOR = GetAddOnMetadata("GreedyLoot", "Author")
+local WEBSITE = GetAddOnMetadata("GreedyLoot", "X-Website")
+
+-- Default settings
+local defaults = {
+    profile = {
+        autoConfirmBoP = true,
+        autoConfirmNeed = true,
+        autoConfirmGreed = true,
+        autoPassNoVendorPrice = false,
+        autoPassExceptUsableGear = false,
+        autoPassExceptUnlearned = false,
+        autoPassExceptNonBoP = false,
+        autoGreedWeapons = false,
+        autoGreedWeaponsMaxQuality = 2,
+        autoGreedArmor = false,
+        autoGreedArmorMaxQuality = 2,
+        autoGreedGearExceptTransmog = false,
+        autoGreedGearExceptUsable = false,
+        autoGreedGearExceptBoP = false,
+        autoGreedGearExceptNoVendorPrice = false,
+        autoGreedRecipes = false,
+        autoGreedRecipesMaxQuality = 2,
+        autoGreedOther = false,
+        autoGreedOtherMaxQuality = 2,
+        autoGreedOtherExceptNoVendorPrice = false,
+        autoGreedOtherExceptUsableGear = false,
+        autoGreedOtherExceptTransmog = false,
+        autoGreedOtherExceptUnlearned = false,
+        debugMode = false,
+    },
+}
+
+-- Options table for the addon configuration
+local options = {
+    name = "Greedy Loot",
+    handler = nil, -- Will be set in main addon file
+    type = "group",
+    cmdHidden = true,
+    args = {
+        -- Auto-Confirm Section
+        confirm_subgroup = {
+            name = "Auto-Confirm",
+            type = "group",
+            inline = true,
+            order = 10,
+            args = {
+                autoConfirmBoP = {
+                    name = "BoP",
+                    desc = "Automatically confirm Bind on Pickup items when looting",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1,
+                    order = 1,
+                },
+                autoConfirmNeed = {
+                    name = "Need",
+                    desc = "Automatically confirm Need rolls",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1,
+                    order = 2,
+                },
+                autoConfirmGreed = {
+                    name = "Greed",
+                    desc = "Automatically confirm Greed rolls",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1,
+                    order = 3,
+                },
+            },
+        },
+        -- Auto-Pass Section
+        pass_subgroup = {
+            name = "Auto-Pass",
+            type = "group",
+            inline = true,
+            order = 30,
+            args = {
+                autoPassNoVendorPrice = {
+                    name = "No Vendor Price",
+                    desc = "Automatically pass on items with no vendor price.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 1,
+                },
+                autoPassExceptUsableGear = {
+                    name = "Except Usable Gear",
+                    desc = "Do not pass on items that are usable gear.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 2,
+                },
+                autoPassExceptUnlearned = {
+                    name = "Except Unlearned",
+                    desc = "Do not pass on recipes that are not learned.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 3,
+                },
+                autoPassExceptNonBoP = {
+                    name = "Except Non-BoP",
+                    desc = "Do not pass on non-BoP items.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 4,
+                },
+            },
+        },
+        -- Auto-Greed Gear Section
+        gear_subgroup = {
+            name = "Auto-Greed Gear",
+            type = "group",
+            inline = true,
+            order = 50,
+            args = {
+                autoGreedWeapons = {
+                    name = "Weapons",
+                    desc = "Automatically greed on weapons up to the selected quality",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 0.6,
+                    order = 1,
+                },
+                autoGreedWeaponsMaxQuality = {
+                    name = "",
+                    desc = "Maximum quality for auto-greeding on weapons",
+                    type = 'select',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    values = QUALITY_DISPLAY,
+                    width = 0.6,
+                    order = 2,
+                },
+                gear_spacer1 = {
+                    name = "",
+                    type = 'description',
+                    order = 3,
+                },
+                autoGreedArmor = {
+                    name = "Armor",
+                    desc = "Automatically greed on armor up to the selected quality",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 0.6,
+                    order = 4,
+                },
+                autoGreedArmorMaxQuality = {
+                    name = "",
+                    desc = "Maximum quality for auto-greeding on armor",
+                    type = 'select',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    values = QUALITY_DISPLAY,
+                    width = 0.6,
+                    order = 5,
+                },
+                gear_spacer2 = {
+                    name = "",
+                    type = 'description',
+                    order = 6,
+                },
+                autoGreedGearExceptNoVendorPrice = {
+                    name = "Except No Vendor Price",
+                    desc = "Do not greed on gear with no vendor price.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 7,
+                },
+                autoGreedGearExceptUsable = {
+                    name = "Except Usable Gear",
+                    desc = "Do not greed on gear that is usable by your character.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 8,
+                },
+                autoGreedGearExceptTransmog = {
+                    name = "Except Missing Transmog",
+                    desc = "Do not greed on gear that is missing from your transmog collection.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 9,
+                },
+                autoGreedGearExceptBoP = {
+                    name = "Except Non-BoP",
+                    desc = "Do not greed on non-BoP gear.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 10,
+                },
+            },
+        },
+        -- Auto-Greed Other Section
+        other_subgroup = {
+            name = "Auto-Greed Other",
+            type = "group",
+            inline = true,
+            order = 70,
+            args = {
+                autoGreedRecipes = {
+                    name = "Recipes",
+                    desc = "Automatically greed on recipes up to the selected quality",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 0.6,
+                    order = 1,
+                },
+                autoGreedRecipesMaxQuality = {
+                    name = "",
+                    desc = "Maximum quality for auto-greeding on recipes",
+                    type = 'select',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    values = QUALITY_DISPLAY,
+                    width = 0.6,
+                    order = 2,
+                },
+                other_spacer1 = {
+                    name = "",
+                    type = 'description',
+                    order = 3,
+                },
+                autoGreedOther = {
+                    name = "Other",
+                    desc = "Automatically greed on other items up to the selected quality",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 0.6,
+                    order = 4,
+                },
+                autoGreedOtherMaxQuality = {
+                    name = "",
+                    desc = "Maximum quality for auto-greeding on other items",
+                    type = 'select',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    values = QUALITY_DISPLAY,
+                    width = 0.6,
+                    order = 5,
+                },
+                other_spacer2 = {
+                    name = "",
+                    type = 'description',
+                    order = 6,
+                },
+                autoGreedOtherExceptNoVendorPrice = {
+                    name = "Except No Vendor Price",
+                    desc = "Do not greed on items with no vendor price.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 7,
+                },
+                autoGreedOtherExceptUsableGear = {
+                    name = "Except Usable Gear",
+                    desc = "Do not greed on items that are usable gear.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 8,
+                },
+                autoGreedOtherExceptTransmog = {
+                    name = "Except Missing Transmog",
+                    desc = "Do not greed on items missing from your transmog collection.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 9,
+                },
+                autoGreedOtherExceptUnlearned = {
+                    name = "Except Unlearned",
+                    desc = "Do not greed on recipes that are not learned.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 10,
+                },
+            },
+        },
+        -- Debug Section
+        debug_subgroup = {
+            name = "Debug",
+            type = "group",
+            inline = true,
+            order = 90,
+            args = {
+                debugMode = {
+                    name = "Print Details",
+                    desc = "Print detailed information about loot decisions to chat",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = 1.3,
+                    order = 1,
+                },
+            },
+        },
+        -- About Section
+        about_subgroup = {
+            name = "About",
+            type = "group",
+            inline = true,
+            order = 110,
+            args = {
+                description_text = {
+                    name = "Greedy Loot adds auto loot confirmation and auto pass/greed options.",
+                    type = 'description',
+                    order = 1,
+                },
+                about_spacer1 = {
+                    name = "",
+                    type = 'description',
+                    order = 2,
+                },
+                usage_header = {
+                    name = "Usage:",
+                    type = 'description',
+                    fontSize = 'medium',
+                    order = 3,
+                },
+                usage_text = {
+                    name = "1. Configure your preferences in each section\n2. Set quality thresholds for auto-greeding\n3. Enable exclusion options as needed\n4. The addon will automatically handle loot rolls based on your settings\n5. Use /gl to quickly access options",
+                    type = 'description',
+                    order = 4,
+                },
+                about_spacer4 = {
+                    name = "",
+                    type = 'description',
+                    order = 5,
+                },
+                version_info = {
+                    name = "Version: |cff00ff00" .. VERSION .. "|r",
+                    type = 'description',
+                    order = 6,
+                },
+                author_info = {
+                    name = "Author: |cff00ff00" .. AUTHOR .. "|r",
+                    type = 'description',
+                    order = 7,
+                },
+                website_info = {
+                    name = ("Website: |cff00ff00" .. WEBSITE .. "|r") ,
+                    type = 'description',
+                    order = 8,
+                },
+            },
+        },
+    },
+}
+
+-- Make defaults and options available as global variables for the main addon
+GreedyLoot_Defaults = defaults
+GreedyLoot_Options = options
