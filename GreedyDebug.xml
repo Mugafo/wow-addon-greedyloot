@@ -1,0 +1,199 @@
+<Ui xmlns="http://www.blizzard.com/wow/ui/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.blizzard.com/wow/ui/
+..\FrameXML\UI.xsd">
+    
+    <Script file="GreedyDebug.lua"/>
+    
+    <Frame name="GreedyDebugFrame" parent="UIParent" hidden="true" enableMouse="true" movable="true" frameStrata="HIGH" inherits="BackdropTemplate">
+        <Size x="870" y="500"/>
+        <Anchors>
+            <Anchor point="CENTER"/>
+        </Anchors>
+        <Layers>
+            <Layer level="BACKGROUND">
+                <Texture>
+                    <Color r="0" g="0" b="0" a="0.95"/>
+                </Texture>
+            </Layer>
+        </Layers>
+        <Layers>
+            <Layer level="OVERLAY">
+                <!-- Title -->
+                <FontString name="$parentTitle" inherits="GameFontNormalLarge">
+                    <Anchors>
+                        <Anchor point="TOP" relativePoint="TOP" x="0" y="-10"/>
+                    </Anchors>
+                </FontString>
+            </Layer>
+        </Layers>
+        <Frames>
+            
+            <!-- Gear Icon Button -->
+            <Button name="$parentGearButton" inherits="UIPanelButtonTemplate">
+                <Size x="20" y="20"/>
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativePoint="TOPLEFT" x="10" y="-15"/>
+                </Anchors>
+            </Button>
+            
+            <!-- Add Item Button -->
+            <Button name="$parentAddItemButton" inherits="UIPanelButtonTemplate">
+                <Size x="80" y="20"/>
+                <Anchors>
+                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" x="-95" y="-15"/>
+                </Anchors>
+            </Button>
+            
+            <!-- Close Button -->
+            <Button name="$parentCloseButton" inherits="UIPanelCloseButton">
+                <Anchors>
+                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" x="-5" y="-5"/>
+                </Anchors>
+            </Button>
+            
+            <!-- Clear Button -->
+            <Button name="$parentClearButton" inherits="UIPanelButtonTemplate">
+                <Size x="60" y="20"/>
+                <Anchors>
+                    <Anchor point="TOPRIGHT" relativePoint="TOPRIGHT" x="-35" y="-15"/>
+                </Anchors>
+            </Button>
+            
+            <!-- Table Container -->
+            <Frame name="$parentTableContainer">
+                <Anchors>
+                    <Anchor point="TOPLEFT" relativePoint="TOPLEFT" x="10" y="-40"/>
+                    <Anchor point="BOTTOMRIGHT" relativePoint="BOTTOMRIGHT" x="-10" y="10"/>
+                </Anchors>
+                <Frames>
+                    <!-- Table Header -->
+                    <Frame name="$parentHeader">
+                        <Size x="1220" y="25"/>
+                        <Anchors>
+                            <Anchor point="TOPLEFT" x="0" y="0"/>
+                            <Anchor point="TOPRIGHT" x="0" y="0"/>
+                        </Anchors>
+                        <Layers>
+                            <Layer level="BACKGROUND">
+                                <Texture>
+                                    <Color r="0.2" g="0.2" b="0.2" a="0.8"/>
+                                </Texture>
+                            </Layer>
+                        </Layers>
+                        <Layers>
+                            <Layer level="OVERLAY">
+                                <FontString name="$parentItemName" inherits="GameFontNormal" text="Item Name">
+                                    <Size x="200" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="5" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentItemID" inherits="GameFontNormal" text="ID">
+                                    <Size x="50" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="205" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentItemType" inherits="GameFontNormal" text="Type">
+                                    <Size x="60" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="255" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentClass" inherits="GameFontNormal" text="Class">
+                                    <Size x="80" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="315" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentUsable" inherits="GameFontNormal" text="Usable">
+                                    <Size x="60" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="395" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentRecipe" inherits="GameFontNormal" text="Recipe">
+                                    <Size x="60" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="455" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentLearned" inherits="GameFontNormal" text="Learned">
+                                    <Size x="60" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="515" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentBoP" inherits="GameFontNormal" text="BoP">
+                                    <Size x="50" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="575" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentVendor" inherits="GameFontNormal" text="Value">
+                                    <Size x="55" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="625" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentTransmog" inherits="GameFontNormal" text="Transmog">
+                                    <Size x="80" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="680" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                                
+                                <FontString name="$parentAction" inherits="GameFontNormal" text="Action">
+                                    <Size x="75" y="25"/>
+                                    <Anchors>
+                                        <Anchor point="LEFT" x="760" y="0"/>
+                                    </Anchors>
+                                    <Color r="1" g="1" b="0"/>
+                                </FontString>
+                            </Layer>
+                        </Layers>
+                    </Frame>
+                    
+                    <!-- Content Frame for Data -->
+                    <Frame name="$parentContentFrame">
+                        <Anchors>
+                            <Anchor point="TOPLEFT" x="0" y="-25"/>
+                            <Anchor point="BOTTOMRIGHT" x="0" y="0"/>
+                        </Anchors>
+                        <!-- Data rows will be added here dynamically -->
+                    </Frame>
+                </Frames>
+            </Frame>
+        </Frames>
+        <Scripts>
+            <OnLoad>
+                self:RegisterForDrag("LeftButton")
+            </OnLoad>
+            <OnDragStart>
+                self:StartMoving()
+            </OnDragStart>
+            <OnDragStop>
+                self:StopMovingOrSizing()
+            </OnDragStop>
+        </Scripts>
+    </Frame>
+    
+</Ui> 

@@ -10,92 +10,71 @@ GreedyLoot = LibStub("AceAddon-3.0"):NewAddon("Greedy Loot", "AceConsole-3.0", "
 -- ============================================================================
 
 GreedyLoot.Constants = {
-    ARMOR_SUBCLASS = {
-        CLOTH = 1,
-        LEATHER = 2,
-        MAIL = 3,
-        PLATE = 4,
-    },
-    CLASS_ARMOR_PROFICIENCY = {
-        DEATHKNIGHT = 4,
-        DRUID = 2,
-        HUNTER = 3,
-        MAGE = 1,
-        MONK = 2,
-        PALADIN = 4,
-        PRIEST = 1,
-        ROGUE = 2,
-        SHAMAN = 3,
-        WARLOCK = 1,
-        WARRIOR = 4,
-    },
-    CLASS_WEAPON_PROFICIENCY = {
-        DEATHKNIGHT = {
-            1, 4, 6, 5, 17, 18, 19, 8, 9
-        },
-        DRUID = {
-            4, 6, 5, 18, 19, 8, 9, 7
-        },
-        HUNTER = {
-            1, 6, 5, 17, 19, 2, 3, 11, 8, 9, 7
-        },
-        MAGE = {
-            6, 7, 9, 12
-        },
-        MONK = {
-            1, 4, 6, 5, 17, 18, 19, 8, 9, 7
-        },
-        PALADIN = {
-            1, 4, 6, 5, 17, 18, 19, 15, 16
-        },
-        PRIEST = {
-            4, 7, 9, 12
-        },
-        ROGUE = {
-            1, 4, 6, 5, 8, 9, 10, 11, 2, 3
-        },
-        SHAMAN = {
-            1, 4, 6, 5, 17, 18, 15, 16, 8, 9, 7
-        },
-        WARLOCK = {
-            6, 7, 9, 12
-        },
-        WARRIOR = {
-            1, 4, 6, 5, 17, 18, 19, 15, 16, 8, 9
-        },
-    },
+    -- Item Classes (from WoW API)
     ITEM_CLASS = {
         WEAPON = 2,
         ARMOR = 4,
         RECIPE = 9,
         BATTLE_PET = 17,
     },
+    
+    -- Roll Types
     ROLL_TYPE = {
         PASS = 0,
         NEED = 1,
         GREED = 2,
     },
-    WEAPON_SUBCLASS = {
-        AXE = 1,
-        BOW = 2,
-        GUN = 3,
-        MACE = 4,
-        POLEARM = 5,
-        SWORD = 6,
-        STAFF = 7,
-        FIST = 8,
-        DAGGER = 9,
-        THROWN = 10,
-        CROSSBOW = 11,
-        WAND = 12,
-        FISHING_POLE = 13,
-        MISC = 14,
-        SHIELD = 15,
-        OFF_HAND = 16,
-        TWO_HANDED_AXE = 17,
-        TWO_HANDED_MACE = 18,
-        TWO_HANDED_SWORD = 19,
-        WARGLAIVE = 20,
+    
+    -- Class-specific data
+    CLASS_DATA = {
+        ARMOR_PROFICIENCY = {
+            DEATHKNIGHT = 4,
+            DRUID = 2,
+            HUNTER = 3,
+            MAGE = 1,
+            MONK = 2,
+            PALADIN = 4,
+            PRIEST = 1,
+            ROGUE = 2,
+            SHAMAN = 3,
+            WARLOCK = 1,
+            WARRIOR = 4,
+        },
+        WEAPON_PROFICIENCY = {
+            DEATHKNIGHT = {
+                0, 1, 4, 5, 6, 7, 8, 11
+            },
+            DRUID = {
+                4, 5, 6, 10, 13, 15
+            },
+            HUNTER = {
+                0, 1, 2, 3, 6, 7, 8, 10, 13, 15, 18
+            },
+            MAGE = {
+                7, 8, 10, 15, 19
+            },
+            MONK = {
+                0, 4, 6, 7, 10, 13
+            },
+            PALADIN = {
+                0, 1, 4, 5, 6, 7, 8, 11
+            },
+            PRIEST = {
+                4, 10, 15, 19
+            },
+            ROGUE = {
+                0, 2, 3, 4, 7, 13, 15, 16, 18
+            },
+            SHAMAN = {
+                0, 1, 4, 5, 6, 10, 11, 13, 15
+            },
+            WARLOCK = {
+                7, 8, 10, 15, 19
+            },
+            WARRIOR = {
+                0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 13, 15, 16, 18
+            },
+        },
     },
 }
 
@@ -120,9 +99,84 @@ end
 -- HELPER FUNCTIONS
 -- ============================================================================
 
+-- Helper function to analyze class restrictions from tooltip
+local function GL_AnalyzeClassRestriction(itemLink)
+    if not itemLink then
+        return nil
+    end
+    
+    local tooltip = CreateFrame("GameTooltip", "GLClassAnalysisTooltip", nil, "GameTooltipTemplate")
+    tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    tooltip:SetHyperlink(itemLink)
+    
+    local classRestriction = {
+        hasRestriction = false,
+        allowedClasses = {},
+        playerClass = nil,
+        playerClassLocalized = nil,
+        playerCanUse = false,
+        tooltipLines = {}
+    }
+    
+    -- Get player class info
+    classRestriction.playerClassLocalized, classRestriction.playerClass = UnitClass("player")
+    
+    -- Scan tooltip lines
+    for i = 1, tooltip:NumLines() do
+        local line = _G["GLClassAnalysisTooltipTextLeft" .. i]
+        if line then
+            local text = line:GetText()
+            if text then
+                table.insert(classRestriction.tooltipLines, text)
+                
+                -- Check for class restrictions
+                if text:find("^Classes:") then
+                    classRestriction.hasRestriction = true
+                    
+                    -- Extract class names from the "Classes: Priest, Mage" format
+                    local classList = text:gsub("^Classes:%s*", "")
+                    for class in classList:gmatch("[^,]+") do
+                        class = class:match("^%s*(.-)%s*$") -- trim whitespace
+                        if class and class ~= "" then
+                            table.insert(classRestriction.allowedClasses, class)
+                            
+                            -- Check if player's class is in the allowed list
+                            local classUpper = class:upper():gsub("%s+", "") -- Remove spaces
+                            local playerClassUpper = classRestriction.playerClass:upper()
+                            
+                            if classUpper == playerClassUpper then
+                                classRestriction.playerCanUse = true
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    tooltip:Hide()
+    
+    return classRestriction
+end
+
+-- Helper function to get item type text
+local function GL_GetItemTypeText(itemClassID, itemSubClassID)
+    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
+        return "Weapon"
+    elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+        return "Armor"
+    elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
+        return "Recipe"
+    elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
+        return "Battle Pet"
+    else
+        return "Other"
+    end
+end
+
 -- Check if an armor type is the best for the current class
 local function GL_IsBestArmorTypeForClass(itemSubClassID, playerClass)
-    local bestArmorType = GreedyLoot.Constants.CLASS_ARMOR_PROFICIENCY[playerClass]
+    local bestArmorType = GreedyLoot.Constants.CLASS_DATA.ARMOR_PROFICIENCY[playerClass]
     if not bestArmorType then
         return false
     end
@@ -131,7 +185,7 @@ end
 
 -- Check if a class can equip a specific weapon type
 local function GL_CanClassEquipWeapon(itemSubClassID, playerClass)
-    local classWeapons = GreedyLoot.Constants.CLASS_WEAPON_PROFICIENCY[playerClass]
+    local classWeapons = GreedyLoot.Constants.CLASS_DATA.WEAPON_PROFICIENCY[playerClass]
     if not classWeapons then
         return false
     end
@@ -172,6 +226,28 @@ local function GL_GetItemIDFromLink(itemLink)
     return itemID and tonumber(itemID) or nil
 end
 
+-- Check if an item is a weapon slot item (including shields and off-hand)
+local function GL_IsWeaponSlotItem(itemEquipLoc)
+    if not itemEquipLoc or itemEquipLoc == "" then
+        return false
+    end
+    -- Check if it's a weapon slot item
+    local weaponSlots = {
+        "INVTYPE_WEAPON",
+        "INVTYPE_2HWEAPON", 
+        "INVTYPE_WEAPONMAINHAND",
+        "INVTYPE_WEAPONOFFHAND",
+        "INVTYPE_SHIELD",
+        "INVTYPE_HOLDABLE"
+    }
+    for _, slot in ipairs(weaponSlots) do
+        if itemEquipLoc == slot then
+            return true
+        end
+    end
+    return false
+end
+
 -- Check if an item is collected for transmog
 local function GL_IsItemCollectedForTransmog(itemLink)
     local itemID = GL_GetItemIDFromLink(itemLink)
@@ -179,16 +255,34 @@ local function GL_IsItemCollectedForTransmog(itemLink)
         return false
     end
     
-    -- Check if the item is collected for transmog using WoW Classic API
-    if C_TransmogCollection and C_TransmogCollection.GetItemInfo then
-        local itemInfo = C_TransmogCollection.GetItemInfo(itemID)
-        if itemInfo and type(itemInfo) == "table" and itemInfo.isCollected then
-            return itemInfo.isCollected
+    local tooltip = CreateFrame("GameTooltip", "GLTransmogCheckTooltip", nil, "GameTooltipTemplate")
+    tooltip:SetOwner(UIParent, "ANCHOR_NONE")
+    tooltip:SetHyperlink(itemLink)
+    
+    local foundNotCollected = false
+    
+    -- Look for transmog-related text in tooltip
+    for i = 1, tooltip:NumLines() do
+        local line = _G["GLTransmogCheckTooltipTextLeft" .. i]
+        if line then
+            local text = line:GetText()
+            if text then
+                -- Check for specific not collected phrase
+                if text:find("You haven't collected this appearance") then
+                    foundNotCollected = true
+                end
+            end
         end
     end
     
-    -- Fallback: assume not collected if we can't check
-    return false
+    tooltip:Hide()
+    
+    -- Return based on what we found
+    if foundNotCollected then
+        return false
+    else
+        return true
+    end
 end
 
 -- Check if a recipe is already learned
@@ -198,34 +292,53 @@ local function GL_IsRecipeLearned(itemLink)
         return false
     end
     
-    -- Check if the recipe is learned using WoW Classic API
-    if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
-        local recipeInfo = C_TradeSkillUI.GetRecipeInfo(itemID)
-        if recipeInfo and type(recipeInfo) == "table" and recipeInfo.learned then
-            return recipeInfo.learned
+    local success, recipeInfo = pcall(function()
+        if C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo then
+            return C_TradeSkillUI.GetRecipeInfo(itemID)
         end
+        return nil
+    end)
+    
+    if success and recipeInfo and type(recipeInfo) == "table" then
+        return recipeInfo.learned or false
     end
     
-    -- Fallback: assume not learned if we can't check
     return false
 end
 
 -- Helper: Check if item is usable by the player's class by scanning the tooltip
 local function GL_ItemIsUsableByPlayerClass(itemLink)
-    if not itemLink then return false end
+    if not itemLink then 
+        return false 
+    end
     local playerClassLocalized, playerClass = UnitClass("player")
     local allowed = true
     local tooltip = CreateFrame("GameTooltip", "GLClassCheckTooltip", nil, "GameTooltipTemplate")
     tooltip:SetOwner(UIParent, "ANCHOR_NONE")
     tooltip:SetHyperlink(itemLink)
+    
     for i = 2, tooltip:NumLines() do
         local line = _G["GLClassCheckTooltipTextLeft" .. i]
         if line then
             local text = line:GetText()
             if text and text:find("^Classes:") then
                 allowed = false
-                for class in text:gmatch("%a+") do
-                    if class:upper() == playerClass:upper() then
+                -- Extract class names from the "Classes: Priest, Mage" format
+                local classList = text:gsub("^Classes:%s*", "")
+                local classes = {}
+                for class in classList:gmatch("[^,]+") do
+                    class = class:match("^%s*(.-)%s*$") -- trim whitespace
+                    if class and class ~= "" then
+                        table.insert(classes, class)
+                    end
+                end
+                -- Check if player's class is in the allowed list
+                for _, allowedClass in ipairs(classes) do
+                    -- Convert both to uppercase and remove spaces for case-insensitive comparison
+                    local allowedClassUpper = allowedClass:upper():gsub("%s+", "") -- Remove spaces
+                    local playerClassUpper = playerClass:upper()
+                    
+                    if allowedClassUpper == playerClassUpper then
                         allowed = true
                         break
                     end
@@ -235,113 +348,262 @@ local function GL_ItemIsUsableByPlayerClass(itemLink)
         end
     end
     tooltip:Hide()
+    
     return allowed
 end
 
 -- Check if gear is usable by the current character
-local function GL_IsGearUsable(itemLink)
+local function GL_IsGearUsable(itemLink, itemClassID, itemSubClassID, itemEquipLoc, itemBindType)
     if not itemLink then
         return false
-    end
-    local itemInfo = {GetItemInfo(itemLink)}
-    if not itemInfo or #itemInfo < 13 then
-        if GreedyLoot.db.profile.debugMode then
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: GetItemInfo failed or returned insufficient data"))
-        end
-        return false
-    end
-    local itemClassID = itemInfo[12]
-    local itemSubClassID = itemInfo[13]
+    end    
     if not itemClassID then
-        if GreedyLoot.db.profile.debugMode then
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: No itemClassID found"))
-        end
         return false
     end
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - itemClassID: %s, itemSubClassID: %s", itemName, itemClassID, itemSubClassID))
+    
+    -- Check if it's a weapon slot item (including shields and off-hand)
+    local isWeaponSlotItem = GL_IsWeaponSlotItem(itemEquipLoc)
+    
+    -- If it's a weapon slot item, treat it as a weapon regardless of itemClassID
+    if isWeaponSlotItem then
+        local _, playerClass = UnitClass("player")
+        
+        -- Check if the weapon subclass is in the class's proficiency list
+        local classWeapons = GreedyLoot.Constants.CLASS_DATA.WEAPON_PROFICIENCY[playerClass]
+        if not classWeapons then
+            return false
+        end
+        
+        local canEquipWeapon = false
+        for _, weaponType in ipairs(classWeapons) do
+            if weaponType == itemSubClassID then
+                canEquipWeapon = true
+                break
+            end
+        end
+        
+        if not canEquipWeapon then
+            return false
+        end
+
+        -- Check class restrictions
+        local classRestrictionCheck = GL_ItemIsUsableByPlayerClass(itemLink)
+        
+        if not classRestrictionCheck then
+            return false
+        end
+
+        return true
     end
+
     if itemClassID ~= GreedyLoot.Constants.ITEM_CLASS.WEAPON and itemClassID ~= GreedyLoot.Constants.ITEM_CLASS.ARMOR then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Not weapon or armor, returning false", itemName))
-        end
         return false
     end
+
     if itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
         local _, playerClass = UnitClass("player")
-        local isBestArmorType = GL_IsBestArmorTypeForClass(itemSubClassID, playerClass)
-        if GreedyLoot.db.profile.debugMode then
-            local armorTypeNames = {[1] = "Cloth", [2] = "Leather", [3] = "Mail", [4] = "Plate"}
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Armor check - Item type: %s (%s), Player class: %s, Best armor type for class: %s, Is best type: %s", 
-                itemName,
-                armorTypeNames[itemSubClassID] or "Unknown",
-                itemSubClassID,
-                playerClass, 
-                GreedyLoot.Constants.CLASS_ARMOR_PROFICIENCY[playerClass] or "None",
-                isBestArmorType and "Yes" or "No"))
-        end
-        if not isBestArmorType then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Not best armor type for class, returning false", itemName))
+        
+        -- For armor types 1-4 (cloth, leather, mail, plate), check if it matches the class's best armor type
+        if itemSubClassID >= 1 and itemSubClassID <= 4 then
+            local bestArmorType = GreedyLoot.Constants.CLASS_DATA.ARMOR_PROFICIENCY[playerClass]
+            if not bestArmorType or itemSubClassID ~= bestArmorType then
+                return false
             end
+        end
+        -- For armor types outside 1-4 (like shields, back, tabard), allow them
+        
+        -- Check class restrictions
+        local classRestrictionCheck = GL_ItemIsUsableByPlayerClass(itemLink)
+        
+        if not classRestrictionCheck then
             return false
         end
-        -- Use tooltip class check
-        if not GL_ItemIsUsableByPlayerClass(itemLink) then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Tooltip class check failed, returning false", itemName))
-            end
-            return false
-        end
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Best armor type for class and tooltip class check passed, returning true", itemName))
-        end
+        
         return true
     end
+
     if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
         local _, playerClass = UnitClass("player")
-        local canEquipWeapon = GL_CanClassEquipWeapon(itemSubClassID, playerClass)
-        if GreedyLoot.db.profile.debugMode then
-            local weaponTypeNames = {[1] = "Axe", [2] = "Bow", [3] = "Gun", [4] = "Mace", [5] = "Polearm", [6] = "Sword", [7] = "Staff", [8] = "Fist", [9] = "Dagger", [10] = "Thrown", [11] = "Crossbow", [12] = "Wand", [13] = "Fishing Pole", [14] = "Misc", [15] = "Shield", [16] = "Off Hand", [17] = "Two-Handed Axe", [18] = "Two-Handed Mace", [19] = "Two-Handed Sword", [20] = "Warglaive"}
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Weapon check - Item type: %s (%s), Player class: %s, Can equip: %s", 
-                itemName,
-                weaponTypeNames[itemSubClassID] or "Unknown",
-                itemSubClassID,
-                playerClass, 
-                canEquipWeapon and "Yes" or "No"))
+        
+        -- Check if the weapon subclass is in the class's proficiency list
+        local classWeapons = GreedyLoot.Constants.CLASS_DATA.WEAPON_PROFICIENCY[playerClass]
+        if not classWeapons then
+            return false
         end
+        
+        local canEquipWeapon = false
+        for _, weaponType in ipairs(classWeapons) do
+            if weaponType == itemSubClassID then
+                canEquipWeapon = true
+                break
+            end
+        end
+        
         if not canEquipWeapon then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Cannot equip weapon type, returning false", itemName))
-            end
             return false
         end
-        if not GL_ItemIsUsableByPlayerClass(itemLink) then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Tooltip class check failed for weapon, returning false", itemName))
-            end
+
+        -- Check class restrictions
+        local classRestrictionCheck = GL_ItemIsUsableByPlayerClass(itemLink)
+        
+        if not classRestrictionCheck then
             return false
         end
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Can equip weapon type and tooltip class check passed, returning true", itemName))
-        end
+
         return true
     end
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_IsGearUsable: %s - Not weapon or armor, returning false", itemName))
-    end
+
     return false
+end
+
+local function GL_ExtractBasicItemData(rollIdOrItemLink)
+    if not rollIdOrItemLink then
+        return nil
+    end
+    
+    local itemLink = nil
+    local rollData = nil
+    
+    -- Determine if we're dealing with a rollId or itemLink
+    if type(rollIdOrItemLink) == "number" then
+        -- It's a rollId, get loot roll info
+        local name, texture, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed, reasonGreed, reasonDisenchant = GetLootRollItemInfo(rollIdOrItemLink)
+        itemLink = GetLootRollItemLink(rollIdOrItemLink)
+        
+        rollData = {
+            name = name,
+            texture = texture,
+            count = count,
+            quality = quality,
+            bindOnPickUp = bindOnPickUp,
+            canNeed = canNeed,
+            canGreed = canGreed,
+            canDisenchant = canDisenchant,
+            reasonNeed = reasonNeed,
+            reasonGreed = reasonGreed,
+            reasonDisenchant = reasonDisenchant,
+        }
+    else
+        -- It's an itemLink, use it directly
+        itemLink = rollIdOrItemLink
+        
+        -- For debug purposes, assume these values
+        rollData = {
+            name = nil,
+            texture = nil,
+            count = 1,
+            quality = nil, -- Will be set from GetItemInfo
+            bindOnPickUp = nil, -- Will be set from GetItemInfo
+            canNeed = false,
+            canGreed = true,
+            canDisenchant = false,
+            reasonNeed = nil,
+            reasonGreed = nil,
+            reasonDisenchant = nil,
+        }
+    end
+    
+    if not itemLink then
+        return nil
+    end
+    
+    -- Get detailed item info
+    local itemInfo = {GetItemInfo(itemLink)}
+    if not itemInfo or #itemInfo < 13 then
+        return nil
+    end
+    
+    -- Extract all the information we need
+    local itemData = {
+        -- From GetLootRollItemInfo (or defaults for debug)
+        name = rollData.name,
+        texture = rollData.texture,
+        count = rollData.count,
+        quality = rollData.quality or itemInfo[3], -- Use roll quality or fallback to item rarity
+        bindOnPickUp = rollData.bindOnPickUp or (itemInfo[14] == 1), -- Use roll bind or fallback to item bind type
+        canNeed = rollData.canNeed,
+        canGreed = rollData.canGreed,
+        canDisenchant = rollData.canDisenchant,
+        reasonNeed = rollData.reasonNeed,
+        reasonGreed = rollData.reasonGreed,
+        reasonDisenchant = rollData.reasonDisenchant,
+        
+        -- From GetItemInfo
+        itemLink = itemLink,
+        itemName = itemInfo[1],
+        itemRarity = itemInfo[3],
+        itemLevel = itemInfo[4],
+        itemMinLevel = itemInfo[5],
+        itemType = itemInfo[6],
+        itemSubType = itemInfo[7],
+        itemStackCount = itemInfo[8],
+        itemEquipLoc = itemInfo[9],
+        itemTexture = itemInfo[10],
+        itemSellPrice = itemInfo[11],
+        itemClassID = itemInfo[12],
+        itemSubClassID = itemInfo[13],
+        itemBindType = itemInfo[14],
+        itemExpacID = itemInfo[15],
+        itemSetID = itemInfo[16],
+        itemIsCraftingReagent = itemInfo[17],
+        
+        -- Derived information
+        isRecipe = (itemInfo[12] == GreedyLoot.Constants.ITEM_CLASS.RECIPE),
+        isUsable = GL_IsGearUsable(itemLink, itemInfo[12], itemInfo[13], itemInfo[9], itemInfo[14]),
+        isLearned = (itemInfo[12] == GreedyLoot.Constants.ITEM_CLASS.RECIPE) and GL_IsRecipeLearned(itemLink),
+        hasVendorValue = GL_HasVendorValue(itemLink),
+        isTransmogCollected = GL_IsItemCollectedForTransmog(itemLink),
+        isWeaponSlotItem = GL_IsWeaponSlotItem(itemInfo[9]),
+        
+        -- Class restriction analysis
+        classRestriction = GL_AnalyzeClassRestriction(itemLink),
+    }
+    
+    return itemData
+end
+
+local function GL_EnrichWithItemInfo(itemData)
+    -- Add detailed item information
+    local itemInfo = {GetItemInfo(itemData.itemLink)}
+    if not itemInfo or #itemInfo < 13 then
+        return
+    end
+    itemData.itemName = itemInfo[1]
+    itemData.itemRarity = itemInfo[3]
+    itemData.itemLevel = itemInfo[4]
+    itemData.itemMinLevel = itemInfo[5]
+    itemData.itemType = itemInfo[6]
+    itemData.itemSubType = itemInfo[7]
+    itemData.itemStackCount = itemInfo[8]
+    itemData.itemEquipLoc = itemInfo[9]
+    itemData.itemTexture = itemInfo[10]
+    itemData.itemSellPrice = itemInfo[11]
+    itemData.itemClassID = itemInfo[12]
+    itemData.itemSubClassID = itemInfo[13]
+    itemData.itemBindType = itemInfo[14]
+    itemData.itemExpacID = itemInfo[15]
+    itemData.itemSetID = itemInfo[16]
+    itemData.itemIsCraftingReagent = itemInfo[17]
+end
+
+local function GL_AddDerivedProperties(itemData)
+    -- Add computed properties like isUsable, hasVendorValue, etc.
+    itemData.isUsable = GL_IsGearUsable(itemData.itemLink, itemData.itemClassID, itemData.itemSubClassID, itemData.itemEquipLoc, itemData.itemBindType)
+    itemData.isLearned = (itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE) and GL_IsRecipeLearned(itemData.itemLink)
+    itemData.hasVendorValue = GL_HasVendorValue(itemData.itemLink)
+    itemData.isTransmogCollected = GL_IsItemCollectedForTransmog(itemData.itemLink)
+    itemData.isWeaponSlotItem = GL_IsWeaponSlotItem(itemData.itemEquipLoc)
+end
+
+-- Gather all item information for a loot roll or item link in one place
+local function GL_GatherItemInfo(rollIdOrItemLink)
+    local itemData = GL_ExtractBasicItemData(rollIdOrItemLink)
+    if not itemData then return nil end
+    
+    GL_EnrichWithItemInfo(itemData)
+    GL_AddDerivedProperties(itemData)
+    
+    return itemData
 end
 
 -- ============================================================================
@@ -354,10 +616,6 @@ local function GL_HookLootRollFrame()
     if GroupLootFrame then
         -- Hook the GroupLootFrame to detect when it shows
         GroupLootFrame:HookScript("OnShow", function()
-            if GreedyLoot.db.profile.debugMode then
-                GreedyLoot:Print("GroupLootFrame shown - checking for auto-greed")
-            end
-            
             -- Use a small delay to ensure the frame is fully loaded
             C_Timer.After(0.1, function()
                 GL_CheckForAutoGreed()
@@ -365,18 +623,10 @@ local function GL_HookLootRollFrame()
         end)
     else
         -- If GroupLootFrame doesn't exist yet, try to hook it later
-        if GreedyLoot.db.profile.debugMode then
-            GreedyLoot:Print("GroupLootFrame not found, will retry later")
-        end
-        
         -- Try to hook it again after a short delay
         C_Timer.After(1.0, function()
             if GroupLootFrame then
                 GroupLootFrame:HookScript("OnShow", function()
-                    if GreedyLoot.db.profile.debugMode then
-                        GreedyLoot:Print("GroupLootFrame shown - checking for auto-greed")
-                    end
-                    
                     -- Use a small delay to ensure the frame is fully loaded
                     C_Timer.After(0.1, function()
                         GL_CheckForAutoGreed()
@@ -388,45 +638,48 @@ local function GL_HookLootRollFrame()
 end
 
 -- Check if we should auto-greed on the current loot roll
-local function GL_CheckForAutoGreed()    
-    -- Get the current roll ID from the frame
-    local rollId = GroupLootFrame.rollId
-    if not rollId then
+local function GL_CheckForAutoGreed()
+    -- Get all item data at once
+    local itemData = GL_GatherItemInfo(GroupLootFrame.rollId)
+    if not itemData then
         return
     end
-    
+
+    -- Use the gathered data
+    local itemLink = itemData.itemLink
+    local itemClassID = itemData.itemClassID
+
     -- Call the ShouldAutoGreed function to get the decision
-    local shouldGreed = GL_ShouldAutoGreed(rollId)
-    
-    -- Get canGreed from the loot roll info
-    local name, texture, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed, reasonGreed, reasonDisenchant = GetLootRollItemInfo(rollId)
-    
-    -- Debug the decision values
-    if GreedyLoot.db.profile.debugMode then
-        GreedyLoot:Print(string.format("CheckForAutoGreed - shouldGreed: %s, canGreed: %s", 
-            shouldGreed and "Yes" or "No", 
-            canGreed and "Yes" or "No"))
+    local shouldGreed = GL_ShouldAutoGreed(itemData)
+
+    -- Determine the action and decision data
+    local action = "NO_ACTION"
+
+    -- Check if we should pass
+    local shouldPass = GL_ShouldPass(itemData)
+    if shouldPass then
+        action = "PASS"
+    elseif shouldGreed and itemData.canGreed then
+        action = "GREED"
+        ConfirmLootRoll(GroupLootFrame.rollId, GreedyLoot.Constants.ROLL_TYPE.GREED)
     end
 
-    -- Auto-greed if requirements are met and greed is available
-    local itemLink = select(2, GetLootRollItemInfo(rollId))
-    local itemClassID = select(6, GetItemInfoInstant(itemLink))
-    if shouldGreed and canGreed then
-        if GreedyLoot.db.profile.debugMode and (itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR) then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown"
-            GreedyLoot:Print(string.format("→ Executing auto-greed on: %s", itemName))
+    -- Format decision data for debug window
+    if GreedyLoot.Debug then
+        local maxQuality = nil
+        if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
+            maxQuality = GreedyLoot.db.profile.autoGreedWeaponsMaxQuality
+        elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+            maxQuality = GreedyLoot.db.profile.autoGreedArmorMaxQuality
+        elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
+            maxQuality = GreedyLoot.db.profile.autoGreedRecipesMaxQuality
+        else
+            maxQuality = GreedyLoot.db.profile.autoGreedOtherMaxQuality
         end
-        ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.GREED)
-    elseif not shouldGreed then
-        if GreedyLoot.db.profile.debugMode and (itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR) then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown"
-            GreedyLoot:Print(string.format("→ Not auto-greeding: %s", itemName))
-        end
-    elseif shouldGreed and not canGreed then
-        if GreedyLoot.db.profile.debugMode and (itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR) then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown"
-            GreedyLoot:Print(string.format("→ Not auto-greeding: Cannot greed on this item (%s)", itemName))
-        end
+        local decisionData = GreedyLoot.Debug:FormatDecisionData(itemLink, itemClassID, itemData.quality, itemData.isUsable, itemData.isRecipe, itemData.isLearned, itemData.bindOnPickUp, itemData.hasVendorValue, itemData.isTransmogCollected, shouldPass, shouldGreed, maxQuality, nil)
+        
+        -- Always add to debug window if debug module is available
+        GreedyLoot.Debug:AddLootDecision(itemLink, itemClassID, itemData.quality, itemData.isUsable, itemData.isRecipe, itemData.isLearned, itemData.bindOnPickUp, itemData.hasVendorValue, itemData.isTransmogCollected, action, decisionData)
     end
 end
 
@@ -444,12 +697,11 @@ function GreedyLoot:OnInitialize()
     GreedyLoot.optionsDialog = LibStub("AceConfigDialog-3.0"):AddToBlizOptions("Greedy Loot")
 end
 
-function GreedyLoot:OnEnable()
-    GreedyLoot:Print("Version " .. GreedyLoot.version)
-    
+function GreedyLoot:OnEnable()        
     -- Register events for loot roll handling
     GreedyLoot:RegisterEvent("CONFIRM_LOOT_ROLL", "CONFIRM_ROLL")
     GreedyLoot:RegisterEvent("START_LOOT_ROLL", "START_LOOT_ROLL")
+    GreedyLoot:RegisterEvent("LOOT_ROLLS_COMPLETE", "LOOT_ROLLS_COMPLETE")
     
     -- Register slash commands
     GreedyLoot:RegisterChatCommand("gl", "OnSlashCommand")
@@ -469,14 +721,24 @@ end
 -- ============================================================================
 
 function GreedyLoot:OnSlashCommand(input)
-    -- Open options panel using the appropriate method for the current WoW version
-    if Settings and Settings.OpenToCategory then
-        Settings.OpenToCategory("Greedy Loot")
-    elseif InterfaceOptionsFrame_OpenToCategory then
-        InterfaceOptionsFrame_OpenToCategory("Greedy Loot")
-    elseif InterfaceOptionsFrame then
-        InterfaceOptionsFrame:Show()
-        InterfaceOptionsFrame_OpenToCategory("Greedy Loot")
+    local command = strlower(input or "")    
+    if command == "debug" then
+        -- Toggle debug window
+        if GreedyLoot.Debug then
+            GreedyLoot.Debug:Toggle()
+        else
+            GreedyLoot:Print("Debug module not available")
+        end
+    else
+        -- Open options panel using the appropriate method for the current WoW version
+        if Settings and Settings.OpenToCategory then
+            Settings.OpenToCategory("Greedy Loot")
+        elseif InterfaceOptionsFrame_OpenToCategory then
+            InterfaceOptionsFrame_OpenToCategory("Greedy Loot")
+        elseif InterfaceOptionsFrame then
+            InterfaceOptionsFrame:Show()
+            InterfaceOptionsFrame_OpenToCategory("Greedy Loot")
+        end
     end
 end
 
@@ -506,55 +768,26 @@ LootSlot = GL_HookedLootSlot
 -- ============================================================================
 
 -- Returns true if the item should be passed
-local function GL_ShouldPass(itemLink, itemClassID, isUsable, isRecipe, isLearned, isBoP, hasVendorValue)
+local function GL_ShouldPass(itemData)
     local db = GreedyLoot.db.profile
     
     -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemClassID == 15 then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Battle Pet"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: Skipping battle pet/misc item: %s (battle pets and misc items are always skipped)", itemName))
-        end
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
         return false
-    end
-    
-    -- Debug: Print initial conditions
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - autoPassNoVendorPrice: %s, isUsable: %s, isRecipe: %s, isLearned: %s, isBoP: %s, hasVendorValue: %s", 
-            itemName, 
-            db.autoPassNoVendorPrice and "true" or "false",
-            isUsable and "true" or "false",
-            isRecipe and "true" or "false", 
-            isLearned and "true" or "false",
-            isBoP and "true" or "false",
-            hasVendorValue and "true" or "false"))
     end
     
     -- If auto-pass is disabled, never pass
     if not db.autoPassNoVendorPrice then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - autoPassNoVendorPrice is disabled, returning false", itemName))
-        end
         return false
     end
     
     -- Don't pass if it's usable gear
-    if db.autoPassExceptUsableGear and isUsable then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - autoPassExceptUsableGear enabled and item is usable, returning false", itemName))
-        end
+    if db.autoPassExceptUsableGear and itemData.isUsable then
         return false
     end
     
     -- Don't pass if item has vendor value
-    if hasVendorValue then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - item has vendor value, returning false", itemName))
-        end
+    if itemData.hasVendorValue then
         return false
     end
     
@@ -562,343 +795,212 @@ local function GL_ShouldPass(itemLink, itemClassID, isUsable, isRecipe, isLearne
     -- Check exceptions for items with no vendor value
     
     -- Don't pass if it's non-BoP and is not a recipe
-    if db.autoPassExceptNonBoP and not isBoP and isRecipe then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - autoPassExceptNonBoP enabled and item is not BoP, returning false", itemName))
-        end
+    if db.autoPassExceptNonBoP and not itemData.bindOnPickUp and itemData.isRecipe then
         return false
     end
     
     -- Don't pass if it's an unlearned recipe
-    if db.autoPassExceptUnlearned and isRecipe and not isLearned then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - autoPassExceptUnlearned enabled and item is unlearned recipe, returning false", itemName))
-        end
+    if db.autoPassExceptUnlearned and itemData.isRecipe and not itemData.isLearned then
         return false
     end
     
     -- All conditions met for auto-pass
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldPass: %s - all conditions met for auto-pass, returning true", itemName))
-    end
     return true
 end
 
 -- Returns true if the gear should be greeded
-local function GL_ShouldGreedGear(itemLink, itemClassID, quality, isUsable, isBoP, hasVendorValue, isTransmogCollected)
+local function GL_ShouldGreedGear(itemData)
     local db = GreedyLoot.db.profile
     
-    -- Debug: Print initial conditions
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - itemClassID: %s, quality: %s, isUsable: %s, isBoP: %s, hasVendorValue: %s, isTransmogCollected: %s", 
-            itemName, 
-            itemClassID,
-            quality,
-            isUsable and "true" or "false",
-            isBoP and "true" or "false",
-            hasVendorValue and "true" or "false",
-            isTransmogCollected and "true" or "false"))
+    -- Check if it's a weapon slot item first (including shields and off-hand)
+    local isWeaponSlotItem = itemData.isWeaponSlotItem
+    
+    -- Determine if this should be treated as a weapon or armor
+    local treatAsWeapon = false
+    local treatAsArmor = false
+    
+    if isWeaponSlotItem then
+        treatAsWeapon = true
+    elseif itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
+        treatAsWeapon = true
+    elseif itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+        treatAsArmor = true
     end
     
     -- Check weapon settings
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
+    if treatAsWeapon then
         if not db.autoGreedWeapons then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedWeapons disabled, returning false", itemName))
-            end
             return false
         end
-        if quality > db.autoGreedWeaponsMaxQuality then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - quality %s exceeds max %s for weapons, returning false", itemName, quality, db.autoGreedWeaponsMaxQuality))
-            end
+        if itemData.quality > db.autoGreedWeaponsMaxQuality then
             return false
         end
     -- Check armor settings
-    elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+    elseif treatAsArmor then
         if not db.autoGreedArmor then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedArmor disabled, returning false", itemName))
-            end
             return false
         end
-        if quality > db.autoGreedArmorMaxQuality then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - quality %s exceeds max %s for armor, returning false", itemName, quality, db.autoGreedArmorMaxQuality))
-            end
+        if itemData.quality > db.autoGreedArmorMaxQuality then
             return false
         end
     else
         -- Not a weapon or armor
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - not weapon or armor (itemClassID: %s), returning false", itemName, itemClassID))
-        end
         return false
     end
     
     -- Check exceptions
-    if db.autoGreedGearExceptBoP and not isBoP then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedGearExceptBoP enabled and item is not BoP, returning false", itemName))
-        end
+    if db.autoGreedGearExceptBoP and not itemData.bindOnPickUp then
         return false
     end
     
-    if db.autoGreedGearExceptUsable and isUsable then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedGearExceptUsable enabled and item is usable, returning false", itemName))
-        end
+    if db.autoGreedGearExceptUsable and itemData.isUsable then
         return false
     end
     
-    if db.autoGreedGearExceptNoVendorPrice and not hasVendorValue then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedGearExceptNoVendorPrice enabled and item has no vendor value, returning false", itemName))
-        end
+    if db.autoGreedGearExceptNoVendorPrice and not itemData.hasVendorValue then
         return false
     end
     
-    if db.autoGreedGearExceptTransmog and isUsable and not isTransmogCollected then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - autoGreedGearExceptTransmog enabled and item is usable but not collected, returning false", itemName))
-        end
+    if db.autoGreedGearExceptTransmog and itemData.isUsable and not itemData.isTransmogCollected then
         return false
     end
     
     -- All conditions met for auto-greed gear
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldGreedGear: %s - all conditions met for auto-greed gear, returning true", itemName))
-    end
     return true
 end
 
 -- Returns true if the other item should be greeded
-local function GL_ShouldGreedOther(itemLink, itemClassID, quality, isUsable, isRecipe, isLearned, hasVendorValue, isTransmogCollected)
+local function GL_ShouldGreedOther(itemData)
     local db = GreedyLoot.db.profile
     
     -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemClassID == 15 then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Battle Pet"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: Skipping battle pet/misc item: %s (battle pets and misc items are always skipped)", itemName))
-        end
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
         return false
     end
     
-    -- Debug: Print initial conditions
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - itemClassID: %s, quality: %s, isUsable: %s, isRecipe: %s, isLearned: %s, hasVendorValue: %s, isTransmogCollected: %s", 
-            itemName, 
-            itemClassID,
-            quality,
-            isUsable and "true" or "false",
-            isRecipe and "true" or "false",
-            isLearned and "true" or "false",
-            hasVendorValue and "true" or "false",
-            isTransmogCollected and "true" or "false"))
-    end
-    
     -- Check recipe settings
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
         if not db.autoGreedRecipes then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedRecipes disabled, returning false", itemName))
-            end
             return false
         end
-        if quality > db.autoGreedRecipesMaxQuality then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - quality %s exceeds max %s for recipes, returning false", itemName, quality, db.autoGreedRecipesMaxQuality))
-            end
+        if itemData.quality > db.autoGreedRecipesMaxQuality then
             return false
         end
     -- Check other items settings
     else
         if not db.autoGreedOther then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedOther disabled, returning false", itemName))
-            end
             return false
         end
-        if quality > db.autoGreedOtherMaxQuality then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - quality %s exceeds max %s for other items, returning false", itemName, quality, db.autoGreedOtherMaxQuality))
-            end
+        if itemData.quality > db.autoGreedOtherMaxQuality then
             return false
         end
     end
     
     -- Check exceptions
-    if db.autoGreedOtherExceptNoVendorPrice and not hasVendorValue then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedOtherExceptNoVendorPrice enabled and item has no vendor value, returning false", itemName))
-        end
+    if db.autoGreedOtherExceptNoVendorPrice and not itemData.hasVendorValue then
         return false
     end
     
-    if db.autoGreedOtherExceptUsableGear and isUsable then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedOtherExceptUsableGear enabled and item is usable gear, returning false", itemName))
-        end
+    if db.autoGreedOtherExceptUsableGear and itemData.isUsable then
         return false
     end
     
-    if db.autoGreedOtherExceptTransmog and isUsable and not isTransmogCollected then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedOtherExceptTransmog enabled and item is usable but not collected, returning false", itemName))
-        end
+    if db.autoGreedOtherExceptTransmog and itemData.isUsable and not itemData.isTransmogCollected then
         return false
     end
     
-    if db.autoGreedOtherExceptUnlearned and isRecipe and not isLearned then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - autoGreedOtherExceptUnlearned enabled and item is unlearned recipe, returning false", itemName))
-        end
+    if db.autoGreedOtherExceptUnlearned and itemData.isRecipe and not itemData.isLearned then
         return false
     end
     
     -- All conditions met for auto-greed other
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldGreedOther: %s - all conditions met for auto-greed other, returning true", itemName))
-    end
     return true
 end
 
 -- Main decision function for auto-greed
-local function GL_ShouldAutoGreed(rollId)
-    local name, texture, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed, reasonGreed, reasonDisenchant = GetLootRollItemInfo(rollId)
-    local itemLink = GetLootRollItemLink(rollId)
-    local itemInfo = {GetItemInfo(itemLink)}
-    local itemClassID = itemInfo[12]
-    local isRecipe = (itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE)
-    local isUsable = GL_IsGearUsable(itemLink)
-    local isLearned = isRecipe and GL_IsRecipeLearned(itemLink)
-    local isBoP = bindOnPickUp
-    local hasVendorValue = GL_HasVendorValue(itemLink)
-    local isTransmogCollected = GL_IsItemCollectedForTransmog(itemLink)
-
-    -- Debug: Print initial item info
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: %s - Starting decision process", itemName))
-        GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: %s - itemClassID: %s, quality: %s, isBoP: %s, hasVendorValue: %s", 
-            itemName, itemClassID, quality, isBoP and "true" or "false", hasVendorValue and "true" or "false"))
-    end
-
+local function GL_ShouldAutoGreed(itemData)
     -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemClassID == 15 then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Battle Pet"
-            GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: Skipping battle pet/misc item: %s (battle pets and misc items are always skipped)", itemName))
-        end
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
         return false
     end
 
     -- Check if we should pass
-    local shouldPass = GL_ShouldPass(itemLink, itemClassID, isUsable, isRecipe, isLearned, isBoP, hasVendorValue)
+    local shouldPass = GL_ShouldPass(itemData)
     if shouldPass then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: %s - Should pass, returning false (don't greed)", itemName))
-        end
         return false
     end
 
+    -- Check if it's a weapon slot item or gear item
+    local isWeaponSlotItem = itemData.isWeaponSlotItem
+    local isGearItem = (itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR or isWeaponSlotItem)
+
     -- Check if we should greed gear
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
-        local shouldGreedGear = GL_ShouldGreedGear(itemLink, itemClassID, quality, isUsable, isBoP, hasVendorValue, isTransmogCollected)
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: %s - Gear decision: %s", itemName, shouldGreedGear and "greed" or "no greed"))
-        end
+    if isGearItem then
+        local shouldGreedGear = GL_ShouldGreedGear(itemData)
         return shouldGreedGear
     end
 
     -- Check if we should greed other items
-    local shouldGreedOther = GL_ShouldGreedOther(itemLink, itemClassID, quality, isUsable, isRecipe, isLearned, hasVendorValue, isTransmogCollected)
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_ShouldAutoGreed: %s - Other decision: %s", itemName, shouldGreedOther and "greed" or "no greed"))
-    end
+    local shouldGreedOther = GL_ShouldGreedOther(itemData)
     return shouldGreedOther
 end
 
 -- Main roll handler
 local function GL_HandleLootRoll(rollId)
-    local name, texture, count, quality, bindOnPickUp, canNeed, canGreed, canDisenchant, reasonNeed, reasonGreed, reasonDisenchant = GetLootRollItemInfo(rollId)
-    local itemLink = GetLootRollItemLink(rollId)
-    local itemInfo = {GetItemInfo(itemLink)}
-    local itemClassID = itemInfo[12]
-    local isRecipe = (itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE)
-    local isUsable = GL_IsGearUsable(itemLink)
-    local isLearned = isRecipe and GL_IsRecipeLearned(itemLink)
-    local isBoP = bindOnPickUp
-    local hasVendorValue = GL_HasVendorValue(itemLink)
-    local isTransmogCollected = GL_IsItemCollectedForTransmog(itemLink)
-
-    -- Debug: Print initial item info
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - Starting roll handler", itemName))
-        GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - itemClassID: %s, quality: %s, isBoP: %s, hasVendorValue: %s", 
-            itemName, itemClassID, quality, isBoP and "true" or "false", hasVendorValue and "true" or "false"))
-    end
-
-    if GL_ShouldPass(itemLink, itemClassID, isUsable, isRecipe, isLearned, isBoP, hasVendorValue) then
-        if GreedyLoot.db.profile.debugMode then
-            local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-            GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - Executing auto-pass", itemName))
-        end
-        ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.PASS)
+    local itemData = GL_GatherItemInfo(rollId)
+    if not itemData then
         return
     end
 
-    if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
-        if GL_ShouldGreedGear(itemLink, itemClassID, quality, isUsable, isBoP, hasVendorValue, isTransmogCollected) then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - Executing auto-greed (gear)", itemName))
-            end
-            ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.GREED)
-            return
-        end
+    local itemLink = itemData.itemLink
+    local itemClassID = itemData.itemClassID
+
+    -- Determine the action and decision data
+    local action = "NO_ACTION"
+
+    -- Check if we should pass
+    local shouldPass = GL_ShouldPass(itemData)
+    if shouldPass then
+        action = "PASS"
+        ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.PASS)
     else
-        if GL_ShouldGreedOther(itemLink, itemClassID, quality, isUsable, isRecipe, isLearned, hasVendorValue, isTransmogCollected) then
-            if GreedyLoot.db.profile.debugMode then
-                local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-                GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - Executing auto-greed (other)", itemName))
+        -- Check if we should greed
+        local shouldGreed = false
+        local maxQuality = nil
+
+        -- Check if it's a weapon slot item or gear item
+        local isWeaponSlotItem = itemData.isWeaponSlotItem
+        local isGearItem = (itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR or isWeaponSlotItem)
+
+        if isGearItem then
+            shouldGreed = GL_ShouldGreedGear(itemData)
+            -- Determine max quality based on whether it's treated as weapon or armor
+            if isWeaponSlotItem or itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
+                maxQuality = GreedyLoot.db.profile.autoGreedWeaponsMaxQuality
+            else
+                maxQuality = GreedyLoot.db.profile.autoGreedArmorMaxQuality
             end
-            ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.GREED)
-            return
+        else
+            shouldGreed = GL_ShouldGreedOther(itemData)
+            if itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
+                maxQuality = GreedyLoot.db.profile.autoGreedRecipesMaxQuality
+            else
+                maxQuality = GreedyLoot.db.profile.autoGreedOtherMaxQuality
+            end
         end
-    end
-    if GreedyLoot.db.profile.debugMode then
-        local itemName = select(2, GetItemInfo(itemLink)) or "Unknown Item"
-        GreedyLoot:Print(string.format("→ GL_HandleLootRoll: %s - No auto-pass or auto-greed action taken", itemName))
+
+        if shouldGreed and itemData.canGreed then
+            action = "GREED"
+            ConfirmLootRoll(rollId, GreedyLoot.Constants.ROLL_TYPE.GREED)
+        end
+
+        -- Format decision data for debug window
+        if GreedyLoot.Debug then
+            local decisionData = GreedyLoot.Debug:FormatDecisionData(itemLink, itemClassID, itemData.quality, itemData.isUsable, itemData.isRecipe, itemData.isLearned, itemData.bindOnPickUp, itemData.hasVendorValue, itemData.isTransmogCollected, shouldPass, shouldGreed, maxQuality, nil)
+            
+            -- Always add to debug window if debug module is available (regardless of debug mode setting)
+            GreedyLoot.Debug:AddLootDecision(itemLink, itemClassID, itemData.quality, itemData.isUsable, itemData.isRecipe, itemData.isLearned, itemData.bindOnPickUp, itemData.hasVendorValue, itemData.isTransmogCollected, action, decisionData)
+        end
     end
 end
 
@@ -925,8 +1027,25 @@ end
 
 -- Handle loot roll start events (determine whether to auto-greed or auto-pass)
 function GreedyLoot:START_LOOT_ROLL(event, rollId, rollTime, lootHandle)
-    if GreedyLoot.db.profile.debugMode then
-        GreedyLoot:Print(string.format("START_LOOT_ROLL event fired - rollId: %s, rollTime: %s", rollId, rollTime))
-    end
     GL_HandleLootRoll(rollId)
 end
+
+-- Handle loot rolls complete event
+function GreedyLoot:LOOT_ROLLS_COMPLETE(event)
+end
+
+-- ============================================================================
+-- EXPOSE FUNCTIONS TO DEBUG MODULE
+-- ============================================================================
+
+-- Make the functions accessible to debug module
+GreedyLoot.GL_IsItemCollectedForTransmog = GL_IsItemCollectedForTransmog
+GreedyLoot.GL_ShouldPass = GL_ShouldPass
+GreedyLoot.GL_ShouldAutoGreed = GL_ShouldAutoGreed
+GreedyLoot.GL_GatherItemInfo = GL_GatherItemInfo
+GreedyLoot.GL_GetItemTypeText = GL_GetItemTypeText
+GreedyLoot.GL_ItemIsUsableByPlayerClass = GL_ItemIsUsableByPlayerClass
+GreedyLoot.GL_IsGearUsable = GL_IsGearUsable
+GreedyLoot.GL_IsWeaponSlotItem = GL_IsWeaponSlotItem
+GreedyLoot.GL_CanClassEquipWeapon = GL_CanClassEquipWeapon
+GreedyLoot.GL_IsBestArmorTypeForClass = GL_IsBestArmorTypeForClass

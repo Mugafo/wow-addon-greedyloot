@@ -70,7 +70,10 @@ Access via: `Interface Options → Greedy Loot` or `/gl`
 Battle Pets are excluded from Auto-Greed/Pass
 
 #### Debug
-- **Print Details**: Enable detailed chat output for troubleshooting
+- **Debug Window**: Track loot decisions in a debug window
+- **Debug Commands**: 
+  - `/gl debug` - Open/close debug window
+  - `/gl clear` - Clear debug history
 
 ## File Structure
 
@@ -79,4 +82,5 @@ GreedyLoot/
 ├── GreedyLoot.toc          # Addon metadata and load order
 ├── GreedyLoot.lua          # Core functionality and loot handling
 ├── GreedyOptions.lua       # Options system and Interface Options
+├── GreedyDebug.lua         # Debug window system
 ```

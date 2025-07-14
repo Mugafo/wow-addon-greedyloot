@@ -9,3 +9,5 @@
 
 GreedyOptions.lua
 GreedyLoot.lua
+GreedyDebug.xml
+GreedyDebug.lua

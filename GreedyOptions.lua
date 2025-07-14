@@ -38,7 +38,6 @@ local defaults = {
         autoGreedOtherExceptUsableGear = false,
         autoGreedOtherExceptTransmog = false,
         autoGreedOtherExceptUnlearned = false,
-        debugMode = false,
     },
 }
 
@@ -316,24 +315,6 @@ local options = {
                 },
             },
         },
-        -- Debug Section
-        debug_subgroup = {
-            name = "Debug",
-            type = "group",
-            inline = true,
-            order = 90,
-            args = {
-                debugMode = {
-                    name = "Print Details",
-                    desc = "Print detailed information about loot decisions to chat",
-                    type = 'toggle',
-                    set = 'SetOption',
-                    get = 'GetOption',
-                    width = 1.3,
-                    order = 1,
-                },
-            },
-        },
         -- About Section
         about_subgroup = {
             name = "About",
@@ -358,7 +339,7 @@ local options = {
                     order = 3,
                 },
                 usage_text = {
-                    name = "1. Configure your preferences in each section\n2. Set quality thresholds for auto-greeding\n3. Enable exclusion options as needed\n4. The addon will automatically handle loot rolls based on your settings\n5. Use /gl to quickly access options",
+                    name = "1. Configure your preferences in each section\n2. Set quality thresholds for auto-greeding\n3. Enable exclusion options as needed\n4. The addon will automatically handle loot rolls based on your settings\n5. Use /gl to quickly access options\n6. Use /gl debug to open debug window\n7. Use /gl clear to clear debug history\n8. Use /gl test to add test data",
                     type = 'description',
                     order = 4,
                 },
