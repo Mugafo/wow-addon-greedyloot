@@ -173,33 +173,64 @@ end
 
 -- Register StaticPopup for add item dialog
 StaticPopupDialogs["GREEDY_DEBUG_ADD_ITEM"] = {
-    text = "Enter Item ID:",
+    text = "Enter Item ID(s):\n(Single ID or comma-separated list)",
     button1 = "Add",
     button2 = "Cancel",
     hasEditBox = true,
     editBoxWidth = 200,
     OnAccept = function(self)
-        local itemID = tonumber(self.editBox:GetText())
-        if itemID then
-            GreedyDebug:AddTestItem(itemID)
+        local editBox = self.editBox
+        if not editBox then
+            -- Try to find the edit box by name as a fallback
+            editBox = _G[self:GetName() .. "EditBox"]
+        end
+        
+        if editBox then
+            local input = editBox:GetText()
+            if input and input:trim() ~= "" then
+                GreedyDebug:AddTestItems(input)
+            else
+                GreedyLoot:Print("Please enter one or more item IDs (comma-separated).")
+            end
         else
-            GreedyLoot:Print("Invalid item ID. Please enter a number.")
+            GreedyLoot:Print("Dialog not ready. Please try again.")
         end
     end,
     OnShow = function(self)
-        self.editBox:SetText("")
-        self.editBox:SetFocus()
+        -- Use a longer delay to ensure editBox is properly initialized
+        C_Timer.After(0.1, function()
+            if self.editBox then
+                self.editBox:SetText("")
+                self.editBox:SetFocus()
+            else
+                -- Try to find the edit box by name as a fallback
+                local editBox = _G[self:GetName() .. "EditBox"]
+                if editBox then
+                    self.editBox = editBox
+                    editBox:SetText("")
+                    editBox:SetFocus()
+                end
+            end
+        end)
     end,
     OnHide = function(self)
-        self.editBox:ClearFocus()
+        local editBox = self.editBox
+        if not editBox then
+            -- Try to find the edit box by name as a fallback
+            editBox = _G[self:GetName() .. "EditBox"]
+        end
+        
+        if editBox then
+            editBox:ClearFocus()
+        end
     end,
     EditBoxOnEnterPressed = function(self)
-        local itemID = tonumber(self:GetText())
-        if itemID then
-            GreedyDebug:AddTestItem(itemID)
+        local input = self:GetText()
+        if input and input:trim() ~= "" then
+            GreedyDebug:AddTestItems(input)
             self:GetParent():Hide()
         else
-            GreedyLoot:Print("Invalid item ID. Please enter a number.")
+            GreedyLoot:Print("Please enter one or more item IDs (comma-separated).")
         end
     end,
     timeout = 0,
@@ -207,6 +238,7 @@ StaticPopupDialogs["GREEDY_DEBUG_ADD_ITEM"] = {
     hideOnEscape = true,
     preferredIndex = 3,
 }
+
 
 -- Initialize the debug window
 function GreedyDebug:Initialize()
@@ -248,6 +280,22 @@ function GreedyDebug:Initialize()
     frame.addItemButton:SetText("Add Item")
     frame.addItemButton:SetScript("OnClick", function() 
         GreedyDebug:ShowAddItemDialog()
+    end)
+    
+    -- Set up reload UI button
+    frame.reloadUIButton = _G[frame:GetName() .. "ReloadUIButton"]
+    frame.reloadUIButton:SetText("Reload UI")
+    frame.reloadUIButton:SetScript("OnClick", function() 
+        GreedyDebug:ReloadUI()
+    end)
+    frame.reloadUIButton:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Reload UI")
+        GameTooltip:AddLine("Reloads the user interface to apply changes", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    frame.reloadUIButton:SetScript("OnLeave", function(self)
+        GameTooltip:Hide()
     end)
     
     -- Set up gear button to open options
@@ -384,6 +432,11 @@ function GreedyDebug:OpenOptions()
         InterfaceOptionsFrame:Show()
         InterfaceOptionsFrame_OpenToCategory("Greedy Loot")
     end
+end
+
+-- Reload UI function
+function GreedyDebug:ReloadUI()
+    ReloadUI()
 end
 
 -- Update the debug window display
@@ -573,6 +626,37 @@ function GreedyDebug:FormatDecisionData(itemLink, itemClassID, quality, isUsable
     return decisionData
 end
 
+-- Test function to add one or more items by ID(s)
+function GreedyDebug:AddTestItems(input)
+    -- Parse the input - handle both single ID and comma-separated list
+    local itemIDs = {}
+    
+    -- Split by comma and trim whitespace
+    for itemID in input:gmatch("([^,]+)") do
+        itemID = itemID:match("^%s*(.-)%s*$") -- trim whitespace
+        local id = tonumber(itemID)
+        if id then
+            table.insert(itemIDs, id)
+        else
+            GreedyLoot:Print("Invalid item ID: " .. itemID .. ". Skipping.")
+        end
+    end
+    
+    if #itemIDs == 0 then
+        GreedyLoot:Print("No valid item IDs found. Please enter one or more numbers.")
+        return
+    end
+    
+    -- Process each item ID
+    for _, itemID in ipairs(itemIDs) do
+        self:AddTestItem(itemID)
+    end
+    
+    if #itemIDs > 1 then
+        GreedyLoot:Print("Added " .. #itemIDs .. " items to debug history.")
+    end
+end
+
 -- Test function to add a single item by ID
 function GreedyDebug:AddTestItem(itemID)
     -- Get item info and create proper item link
@@ -676,24 +760,34 @@ function GreedyDebug:ShowOptionsTooltip(button)
     GameTooltip:AddLine("  Except Unlearned: " .. (db.autoPassExceptUnlearned and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
     GameTooltip:AddLine("")
     
-    -- Auto-greed weapon settings
-    GameTooltip:AddLine("Weapon Auto-Greed:", 1, 1, 0)
-    GameTooltip:AddLine("  Enabled: " .. (db.autoGreedWeapons and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
-    local weaponQualityText = QUALITY_TEXT[db.autoGreedWeaponsMaxQuality] or "None"
-    local weaponQualityColor = QUALITY_COLORS[db.autoGreedWeaponsMaxQuality] or "|cffffffff"
-    GameTooltip:AddLine("  Max Quality: " .. weaponQualityColor .. weaponQualityText .. "|r", 1, 1, 1)
-    GameTooltip:AddLine("  Except BoP: " .. (db.autoGreedGearExceptBoP and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
-    GameTooltip:AddLine("  Except Usable: " .. (db.autoGreedGearExceptUsable and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
-    GameTooltip:AddLine("  Except No Vendor: " .. (db.autoGreedGearExceptNoVendorPrice and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
-    GameTooltip:AddLine("  Except Transmog: " .. (db.autoGreedGearExceptTransmog and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    -- Auto-greed Uncommon settings
+    GameTooltip:AddLine("Auto-Greed Uncommon:", 1, 1, 0)
+    GameTooltip:AddLine("  Weapons: " .. (db.autoGreedUncommonWeapons and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Armor: " .. (db.autoGreedUncommonArmor and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except No Vendor: " .. (db.autoGreedUncommonExceptNoVendorPrice and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Usable: " .. (db.autoGreedUncommonExceptUsableGear and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Transmog: " .. (db.autoGreedUncommonExceptMissingTransmog and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Non-BoP: " .. (db.autoGreedUncommonExceptNonBoP and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
     GameTooltip:AddLine("")
     
-    -- Auto-greed armor settings
-    GameTooltip:AddLine("Armor Auto-Greed:", 1, 1, 0)
-    GameTooltip:AddLine("  Enabled: " .. (db.autoGreedArmor and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
-    local armorQualityText = QUALITY_TEXT[db.autoGreedArmorMaxQuality] or "None"
-    local armorQualityColor = QUALITY_COLORS[db.autoGreedArmorMaxQuality] or "|cffffffff"
-    GameTooltip:AddLine("  Max Quality: " .. armorQualityColor .. armorQualityText .. "|r", 1, 1, 1)
+    -- Auto-greed Rare settings
+    GameTooltip:AddLine("Auto-Greed Rare:", 1, 1, 0)
+    GameTooltip:AddLine("  Weapons: " .. (db.autoGreedRareWeapons and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Armor: " .. (db.autoGreedRareArmor and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except No Vendor: " .. (db.autoGreedRareExceptNoVendorPrice and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Usable: " .. (db.autoGreedRareExceptUsableGear and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Transmog: " .. (db.autoGreedRareExceptMissingTransmog and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Non-BoP: " .. (db.autoGreedRareExceptNonBoP and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("")
+    
+    -- Auto-greed Epic settings
+    GameTooltip:AddLine("Auto-Greed Epic:", 1, 1, 0)
+    GameTooltip:AddLine("  Weapons: " .. (db.autoGreedEpicWeapons and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Armor: " .. (db.autoGreedEpicArmor and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except No Vendor: " .. (db.autoGreedEpicExceptNoVendorPrice and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Usable: " .. (db.autoGreedEpicExceptUsableGear and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Transmog: " .. (db.autoGreedEpicExceptMissingTransmog and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
+    GameTooltip:AddLine("  Except Non-BoP: " .. (db.autoGreedEpicExceptNonBoP and "|cff00ff00ON|r" or "|cffff0000OFF|r"), 1, 1, 1)
     GameTooltip:AddLine("")
     
     -- Auto-greed recipe settings

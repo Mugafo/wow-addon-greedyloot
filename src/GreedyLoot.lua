@@ -217,6 +217,7 @@ local function GL_HasVendorValue(itemLink)
     return sellPrice and sellPrice > 0
 end
 
+
 -- Extract item ID from item link
 local function GL_GetItemIDFromLink(itemLink)
     if not itemLink then
@@ -347,6 +348,7 @@ local function GL_ItemIsUsableByPlayerClass(itemLink)
             end
         end
     end
+    
     tooltip:Hide()
     
     return allowed
@@ -354,6 +356,7 @@ end
 
 -- Check if gear is usable by the current character
 local function GL_IsGearUsable(itemLink, itemClassID, itemSubClassID, itemEquipLoc, itemBindType)
+    
     if not itemLink then
         return false
     end    
@@ -363,6 +366,7 @@ local function GL_IsGearUsable(itemLink, itemClassID, itemSubClassID, itemEquipL
     
     -- Check if it's a weapon slot item (including shields and off-hand)
     local isWeaponSlotItem = GL_IsWeaponSlotItem(itemEquipLoc)
+    
     
     -- If it's a weapon slot item, treat it as a weapon regardless of itemClassID
     if isWeaponSlotItem then
@@ -401,19 +405,23 @@ local function GL_IsGearUsable(itemLink, itemClassID, itemSubClassID, itemEquipL
     end
 
     if itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+        
         local _, playerClass = UnitClass("player")
         
         -- For armor types 1-4 (cloth, leather, mail, plate), check if it matches the class's best armor type
-        if itemSubClassID >= 1 and itemSubClassID <= 4 then
+        -- But skip this check for cloaks, shields, and other special armor types
+        if itemSubClassID >= 1 and itemSubClassID <= 4 and itemEquipLoc ~= "INVTYPE_CLOAK" then
             local bestArmorType = GreedyLoot.Constants.CLASS_DATA.ARMOR_PROFICIENCY[playerClass]
+            
             if not bestArmorType or itemSubClassID ~= bestArmorType then
                 return false
             end
         end
-        -- For armor types outside 1-4 (like shields, back, tabard), allow them
+        -- For armor types outside 1-4 (like shields, back, tabard) and cloaks, allow them
         
         -- Check class restrictions
         local classRestrictionCheck = GL_ItemIsUsableByPlayerClass(itemLink)
+        
         
         if not classRestrictionCheck then
             return false
@@ -454,6 +462,18 @@ local function GL_IsGearUsable(itemLink, itemClassID, itemSubClassID, itemEquipL
     end
 
     return false
+end
+
+-- Helper function to determine if an item is usable by the player's class
+-- This handles both regular gear and tier tokens properly
+local function GL_IsItemUsableByPlayer(itemData)
+    -- For tier tokens (class 15), use class restriction analysis
+    if itemData.itemClassID == 15 and itemData.classRestriction then
+        return itemData.classRestriction.playerCanUse or false
+    end
+    
+    -- For other items, use the standard isUsable check
+    return itemData.isUsable or false
 end
 
 local function GL_ExtractBasicItemData(rollIdOrItemLink)
@@ -549,7 +569,7 @@ local function GL_ExtractBasicItemData(rollIdOrItemLink)
         
         -- Derived information
         isRecipe = (itemInfo[12] == GreedyLoot.Constants.ITEM_CLASS.RECIPE),
-        isUsable = GL_IsGearUsable(itemLink, itemInfo[12], itemInfo[13], itemInfo[9], itemInfo[14]),
+        isUsable = GL_IsGearUsable(itemLink, itemInfo[12], itemInfo[13], itemInfo[9], itemInfo[14]), -- Will be corrected in GL_AddDerivedProperties
         isLearned = (itemInfo[12] == GreedyLoot.Constants.ITEM_CLASS.RECIPE) and GL_IsRecipeLearned(itemLink),
         hasVendorValue = GL_HasVendorValue(itemLink),
         isTransmogCollected = GL_IsItemCollectedForTransmog(itemLink),
@@ -558,6 +578,9 @@ local function GL_ExtractBasicItemData(rollIdOrItemLink)
         -- Class restriction analysis
         classRestriction = GL_AnalyzeClassRestriction(itemLink),
     }
+    
+    -- Correct isUsable for tier tokens after we have the complete itemData object
+    itemData.isUsable = GL_IsItemUsableByPlayer(itemData)
     
     return itemData
 end
@@ -588,7 +611,7 @@ end
 
 local function GL_AddDerivedProperties(itemData)
     -- Add computed properties like isUsable, hasVendorValue, etc.
-    itemData.isUsable = GL_IsGearUsable(itemData.itemLink, itemData.itemClassID, itemData.itemSubClassID, itemData.itemEquipLoc, itemData.itemBindType)
+    itemData.isUsable = GL_IsItemUsableByPlayer(itemData)
     itemData.isLearned = (itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE) and GL_IsRecipeLearned(itemData.itemLink)
     itemData.hasVendorValue = GL_HasVendorValue(itemData.itemLink)
     itemData.isTransmogCollected = GL_IsItemCollectedForTransmog(itemData.itemLink)
@@ -667,10 +690,9 @@ local function GL_CheckForAutoGreed()
     -- Format decision data for debug window
     if GreedyLoot.Debug then
         local maxQuality = nil
-        if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
-            maxQuality = GreedyLoot.db.profile.autoGreedWeaponsMaxQuality
-        elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
-            maxQuality = GreedyLoot.db.profile.autoGreedArmorMaxQuality
+        if itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON or itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
+            -- For gear, we now use quality-specific settings, so show the current quality
+            maxQuality = itemData.quality
         elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
             maxQuality = GreedyLoot.db.profile.autoGreedRecipesMaxQuality
         else
@@ -771,8 +793,8 @@ LootSlot = GL_HookedLootSlot
 local function GL_ShouldPass(itemData)
     local db = GreedyLoot.db.profile
     
-    -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
+    -- Always skip battle pets
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
         return false
     end
     
@@ -825,43 +847,66 @@ local function GL_ShouldGreedGear(itemData)
         treatAsWeapon = true
     elseif itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.ARMOR then
         treatAsArmor = true
-    end
-    
-    -- Check weapon settings
-    if treatAsWeapon then
-        if not db.autoGreedWeapons then
-            return false
-        end
-        if itemData.quality > db.autoGreedWeaponsMaxQuality then
-            return false
-        end
-    -- Check armor settings
-    elseif treatAsArmor then
-        if not db.autoGreedArmor then
-            return false
-        end
-        if itemData.quality > db.autoGreedArmorMaxQuality then
-            return false
-        end
     else
         -- Not a weapon or armor
         return false
     end
     
+    -- Get quality-specific settings based on item quality
+    local qualitySettings = nil
+    if itemData.quality == 2 then -- Uncommon
+        qualitySettings = {
+            weapons = db.autoGreedUncommonWeapons,
+            armor = db.autoGreedUncommonArmor,
+            exceptNoVendorPrice = db.autoGreedUncommonExceptNoVendorPrice,
+            exceptUsableGear = db.autoGreedUncommonExceptUsableGear,
+            exceptMissingTransmog = db.autoGreedUncommonExceptMissingTransmog,
+            exceptNonBoP = db.autoGreedUncommonExceptNonBoP,
+        }
+    elseif itemData.quality == 3 then -- Rare
+        qualitySettings = {
+            weapons = db.autoGreedRareWeapons,
+            armor = db.autoGreedRareArmor,
+            exceptNoVendorPrice = db.autoGreedRareExceptNoVendorPrice,
+            exceptUsableGear = db.autoGreedRareExceptUsableGear,
+            exceptMissingTransmog = db.autoGreedRareExceptMissingTransmog,
+            exceptNonBoP = db.autoGreedRareExceptNonBoP,
+        }
+    elseif itemData.quality == 4 then -- Epic
+        qualitySettings = {
+            weapons = db.autoGreedEpicWeapons,
+            armor = db.autoGreedEpicArmor,
+            exceptNoVendorPrice = db.autoGreedEpicExceptNoVendorPrice,
+            exceptUsableGear = db.autoGreedEpicExceptUsableGear,
+            exceptMissingTransmog = db.autoGreedEpicExceptMissingTransmog,
+            exceptNonBoP = db.autoGreedEpicExceptNonBoP,
+        }
+    else
+        -- Quality not supported (Common or Legendary)
+        return false
+    end
+    
+    -- Check if auto-greed is enabled for this quality and item type
+    if treatAsWeapon and not qualitySettings.weapons then
+        return false
+    elseif treatAsArmor and not qualitySettings.armor then
+        return false
+    end
+    
     -- Check exceptions
-    if db.autoGreedGearExceptBoP and not itemData.bindOnPickUp then
+    if qualitySettings.exceptNonBoP and not itemData.bindOnPickUp then
         return false
     end
     
-    if db.autoGreedGearExceptUsable and itemData.isUsable then
+    if qualitySettings.exceptUsableGear and itemData.isUsable then
         return false
     end
     
-    if db.autoGreedGearExceptNoVendorPrice and not itemData.hasVendorValue then
+    if qualitySettings.exceptNoVendorPrice and not itemData.hasVendorValue then
         return false
     end
     
-    if db.autoGreedGearExceptTransmog and itemData.isUsable and not itemData.isTransmogCollected then
+    if qualitySettings.exceptMissingTransmog and itemData.isUsable and not itemData.isTransmogCollected then
         return false
     end
     
@@ -873,9 +918,44 @@ end
 local function GL_ShouldGreedOther(itemData)
     local db = GreedyLoot.db.profile
     
-    -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
+    -- Always skip battle pets
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
         return false
+    end
+    
+    -- Handle miscellaneous items (class 15) - allow tier tokens through if they have vendor value and are not usable
+    if itemData.itemClassID == 15 then
+        -- For tier tokens, use class restriction analysis instead of isUsable
+        local isUsableByClass = false
+        if itemData.classRestriction and itemData.classRestriction.playerCanUse then
+            isUsableByClass = true
+        end
+        
+        -- Only allow auto-greed on miscellaneous items if they have vendor value and are not usable by the player
+        if not itemData.hasVendorValue or isUsableByClass then
+            return false
+        end
+        -- For tier tokens and similar items, use the "Other" settings
+        if not db.autoGreedOther then
+            return false
+        end
+        if itemData.quality > db.autoGreedOtherMaxQuality then
+            return false
+        end
+        -- Check exceptions for miscellaneous items
+        if db.autoGreedOtherExceptNoVendorPrice and not itemData.hasVendorValue then
+            return false
+        end
+        if db.autoGreedOtherExceptUsableGear and isUsableByClass then
+            return false
+        end
+        if db.autoGreedOtherExceptTransmog and isUsableByClass and not itemData.isTransmogCollected then
+            return false
+        end
+        if db.autoGreedOtherExceptUnlearned and itemData.isRecipe and not itemData.isLearned then
+            return false
+        end
+        return true
     end
     
     -- Check recipe settings
@@ -919,8 +999,8 @@ end
 
 -- Main decision function for auto-greed
 local function GL_ShouldAutoGreed(itemData)
-    -- Always skip battle pets and miscellaneous items (which can include unlearned pets)
-    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET or itemData.itemClassID == 15 then
+    -- Always skip battle pets
+    if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
         return false
     end
 
@@ -974,12 +1054,8 @@ local function GL_HandleLootRoll(rollId)
 
         if isGearItem then
             shouldGreed = GL_ShouldGreedGear(itemData)
-            -- Determine max quality based on whether it's treated as weapon or armor
-            if isWeaponSlotItem or itemClassID == GreedyLoot.Constants.ITEM_CLASS.WEAPON then
-                maxQuality = GreedyLoot.db.profile.autoGreedWeaponsMaxQuality
-            else
-                maxQuality = GreedyLoot.db.profile.autoGreedArmorMaxQuality
-            end
+            -- For gear, we now use quality-specific settings, so show the current quality
+            maxQuality = itemData.quality
         else
             shouldGreed = GL_ShouldGreedOther(itemData)
             if itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
@@ -1049,3 +1125,4 @@ GreedyLoot.GL_IsGearUsable = GL_IsGearUsable
 GreedyLoot.GL_IsWeaponSlotItem = GL_IsWeaponSlotItem
 GreedyLoot.GL_CanClassEquipWeapon = GL_CanClassEquipWeapon
 GreedyLoot.GL_IsBestArmorTypeForClass = GL_IsBestArmorTypeForClass
+GreedyLoot.GL_IsItemUsableByPlayer = GL_IsItemUsableByPlayer
