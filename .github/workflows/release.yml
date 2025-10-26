@@ -19,7 +19,7 @@ jobs:
           tag=$(git describe --tags --abbrev=0)
           
           # Update TOC version from 0.0.0 to the actual tag version
-          sed -i "s/^## Version: 0.0.0/## Version: $tag/" GreedyLoot.toc
+          sed -i "s/^## Version: 0.0.0/## Version: $tag/" src/GreedyLoot.toc
           echo "Updated GreedyLoot.toc version from 0.0.0 to $tag"
           
           # Create zip file of the GreedyLoot folder
