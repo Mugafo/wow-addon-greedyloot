@@ -10,47 +10,56 @@ local VERSION = GetAddOnMetadata("GreedyLoot", "Version")
 local AUTHOR = GetAddOnMetadata("GreedyLoot", "Author")
 local WEBSITE = GetAddOnMetadata("GreedyLoot", "X-Website")
 
+-- Default profile settings (shared between global and character profiles)
+local defaultProfileSettings = {
+    autoConfirmBoP = true,
+    autoConfirmNeed = true,
+    autoConfirmGreed = true,
+    autoPassNoVendorPrice = false,
+    autoPassExceptUsableGear = false,
+    autoPassExceptUnlearned = false,
+    autoPassExceptNonBoP = false,
+    -- Uncommon quality options
+    autoGreedUncommonWeapons = false,
+    autoGreedUncommonArmor = false,
+    autoGreedUncommonExceptNoVendorPrice = false,
+    autoGreedUncommonExceptUsableGear = false,
+    autoGreedUncommonExceptMissingTransmog = false,
+    autoGreedUncommonExceptNonBoP = false,
+    -- Rare quality options
+    autoGreedRareWeapons = false,
+    autoGreedRareArmor = false,
+    autoGreedRareExceptNoVendorPrice = false,
+    autoGreedRareExceptUsableGear = false,
+    autoGreedRareExceptMissingTransmog = false,
+    autoGreedRareExceptNonBoP = false,
+    -- Epic quality options
+    autoGreedEpicWeapons = false,
+    autoGreedEpicArmor = false,
+    autoGreedEpicExceptNoVendorPrice = false,
+    autoGreedEpicExceptUsableGear = false,
+    autoGreedEpicExceptMissingTransmog = false,
+    autoGreedEpicExceptNonBoP = false,
+    -- Other items (recipes, etc.) - keeping existing structure
+    autoGreedRecipes = false,
+    autoGreedRecipesMaxQuality = 2,
+    autoGreedOther = true, -- Enable by default to handle tier tokens
+    autoGreedOtherMaxQuality = 4, -- Allow up to Epic quality
+    autoGreedOtherExceptNoVendorPrice = false,
+    autoGreedOtherExceptUsableGear = false,
+    autoGreedOtherExceptTransmog = false,
+    autoGreedOtherExceptUnlearned = false,
+    -- Misc options
+    ignoreRulesEpicLegendaryInRaid = false,
+}
+
 -- Default settings
 local defaults = {
-    profile = {
-        autoConfirmBoP = true,
-        autoConfirmNeed = true,
-        autoConfirmGreed = true,
-        autoPassNoVendorPrice = false,
-        autoPassExceptUsableGear = false,
-        autoPassExceptUnlearned = false,
-        autoPassExceptNonBoP = false,
-        -- Uncommon quality options
-        autoGreedUncommonWeapons = false,
-        autoGreedUncommonArmor = false,
-        autoGreedUncommonExceptNoVendorPrice = false,
-        autoGreedUncommonExceptUsableGear = false,
-        autoGreedUncommonExceptMissingTransmog = false,
-        autoGreedUncommonExceptNonBoP = false,
-        -- Rare quality options
-        autoGreedRareWeapons = false,
-        autoGreedRareArmor = false,
-        autoGreedRareExceptNoVendorPrice = false,
-        autoGreedRareExceptUsableGear = false,
-        autoGreedRareExceptMissingTransmog = false,
-        autoGreedRareExceptNonBoP = false,
-        -- Epic quality options
-        autoGreedEpicWeapons = false,
-        autoGreedEpicArmor = false,
-        autoGreedEpicExceptNoVendorPrice = false,
-        autoGreedEpicExceptUsableGear = false,
-        autoGreedEpicExceptMissingTransmog = false,
-        autoGreedEpicExceptNonBoP = false,
-        -- Other items (recipes, etc.) - keeping existing structure
-        autoGreedRecipes = false,
-        autoGreedRecipesMaxQuality = 2,
-        autoGreedOther = true, -- Enable by default to handle tier tokens
-        autoGreedOtherMaxQuality = 4, -- Allow up to Epic quality
-        autoGreedOtherExceptNoVendorPrice = false,
-        autoGreedOtherExceptUsableGear = false,
-        autoGreedOtherExceptTransmog = false,
-        autoGreedOtherExceptUnlearned = false,
+    global = {
+        useGlobalProfile = true, -- Default to global profile (account-wide)
     },
+    profile = defaultProfileSettings, -- For backward compatibility and initial setup
+    char = defaultProfileSettings, -- Character-specific profile
 }
 
 -- Options table for the addon configuration
@@ -60,6 +69,24 @@ local options = {
     type = "group",
     cmdHidden = true,
     args = {
+        -- Profile Settings Section
+        profile_subgroup = {
+            name = "Profile Settings",
+            type = "group",
+            inline = true,
+            order = 5,
+            args = {
+                useGlobalProfile = {
+                    name = "Use Global Profile",
+                    desc = "When enabled, settings are shared across all characters. When disabled, each character has its own settings.",
+                    type = 'toggle',
+                    set = 'SetProfileMode',
+                    get = 'GetProfileMode',
+                    width = "full",
+                    order = 1,
+                },
+            },
+        },
         -- Auto-Confirm Section
         confirm_subgroup = {
             name = "Auto-Confirm",
@@ -438,6 +465,24 @@ local options = {
                 },
             },
         },
+        -- Misc Section
+        misc_subgroup = {
+            name = "Misc",
+            type = "group",
+            inline = true,
+            order = 100,
+            args = {
+                ignoreRulesEpicLegendaryInRaid = {
+                    name = "Ignore Rules for Epic/Legendary in Raid",
+                    desc = "When enabled, ignores all rules (won't pass or greed) for Epic or Legendary quality items when in a raid group.",
+                    type = 'toggle',
+                    set = 'SetOption',
+                    get = 'GetOption',
+                    width = "full",
+                    order = 1,
+                },
+            },
+        },
         -- About Section
         about_subgroup = {
             name = "About",
@@ -491,6 +536,21 @@ local options = {
     },
 }
 
+-- Profile management functions
+local function GetActiveProfile()
+    if not GreedyLoot or not GreedyLoot.db then
+        return nil
+    end
+    if GreedyLoot.db.global.useGlobalProfile then
+        -- Use profile (which is account-wide when initialized with true)
+        return GreedyLoot.db.profile
+    else
+        -- Use character-specific profile
+        return GreedyLoot.db.char
+    end
+end
+
 -- Make defaults and options available as global variables for the main addon
 GreedyLoot_Defaults = defaults
 GreedyLoot_Options = options
+GreedyLoot_GetActiveProfile = GetActiveProfile

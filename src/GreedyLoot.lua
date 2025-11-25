@@ -87,12 +87,31 @@ GreedyLoot.options.handler = GreedyLoot
 -- OPTIONS HANDLING
 -- ============================================================================
 
+-- Local helper to get active profile (from GreedyOptions.lua)
+local function GL_GetActiveProfile()
+    if GreedyLoot_GetActiveProfile then
+        return GreedyLoot_GetActiveProfile()
+    end
+    -- Fallback if options not loaded yet
+    return GreedyLoot.db.profile
+end
+
 function GreedyLoot:GetOption(info)
-    return GreedyLoot.db.profile[info[#info]]
+    local activeProfile = GL_GetActiveProfile()
+    return activeProfile[info[#info]]
 end
 
 function GreedyLoot:SetOption(info, input)
-    GreedyLoot.db.profile[info[#info]] = input
+    local activeProfile = GL_GetActiveProfile()
+    activeProfile[info[#info]] = input
+end
+
+function GreedyLoot:GetProfileMode(info)
+    return GreedyLoot.db.global.useGlobalProfile
+end
+
+function GreedyLoot:SetProfileMode(info, input)
+    GreedyLoot.db.global.useGlobalProfile = input
 end
 
 -- ============================================================================
@@ -694,9 +713,9 @@ local function GL_CheckForAutoGreed()
             -- For gear, we now use quality-specific settings, so show the current quality
             maxQuality = itemData.quality
         elseif itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
-            maxQuality = GreedyLoot.db.profile.autoGreedRecipesMaxQuality
+            maxQuality = GL_GetActiveProfile().autoGreedRecipesMaxQuality
         else
-            maxQuality = GreedyLoot.db.profile.autoGreedOtherMaxQuality
+            maxQuality = GL_GetActiveProfile().autoGreedOtherMaxQuality
         end
         local decisionData = GreedyLoot.Debug:FormatDecisionData(itemLink, itemClassID, itemData.quality, itemData.isUsable, itemData.isRecipe, itemData.isLearned, itemData.bindOnPickUp, itemData.hasVendorValue, itemData.isTransmogCollected, shouldPass, shouldGreed, maxQuality, nil)
         
@@ -713,6 +732,11 @@ function GreedyLoot:OnInitialize()
     -- Initialize database with account-wide settings
     GreedyLoot.db = LibStub("AceDB-3.0"):New("GreedyLootDB", GreedyLoot.defaults, true)
     GreedyLoot.version = GetAddOnMetadata("GreedyLoot", "Version")
+    
+    -- Migration: If useGlobalProfile doesn't exist, set it to true (default behavior)
+    if GreedyLoot.db.global.useGlobalProfile == nil then
+        GreedyLoot.db.global.useGlobalProfile = true
+    end
     
     -- Register options with Blizzard interface
     LibStub("AceConfig-3.0"):RegisterOptionsTable("Greedy Loot", GreedyLoot.options)
@@ -773,13 +797,15 @@ local GL_OriginalLootSlot = LootSlot
 local function GL_HookedLootSlot(slot)
     GL_OriginalLootSlot(slot)
     
+    local db = GL_GetActiveProfile()
+    
     -- Auto-confirm BoP items if enabled
-    if GreedyLoot.db.profile.autoConfirmBoP then
+    if db.autoConfirmBoP then
         ConfirmLootSlot(slot)
     end
     
     -- Auto-confirm greed rolls if enabled
-    if GreedyLoot.db.profile.autoConfirmGreed then
+    if db.autoConfirmGreed then
         ConfirmLootSlot(slot)
     end
 end
@@ -791,7 +817,16 @@ LootSlot = GL_HookedLootSlot
 
 -- Returns true if the item should be passed
 local function GL_ShouldPass(itemData)
-    local db = GreedyLoot.db.profile
+    local db = GL_GetActiveProfile()
+    
+    -- Check if we should ignore all rules for Epic/Legendary items in raid
+    if db and db.ignoreRulesEpicLegendaryInRaid then
+        local itemQuality = itemData.quality
+        if itemQuality and (itemQuality == 4 or itemQuality == 5) and IsInRaid() then
+            -- Ignore all rules - don't pass
+            return false
+        end
+    end
     
     -- Always skip battle pets
     if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
@@ -832,7 +867,7 @@ end
 
 -- Returns true if the gear should be greeded
 local function GL_ShouldGreedGear(itemData)
-    local db = GreedyLoot.db.profile
+    local db = GL_GetActiveProfile()
     
     -- Check if it's a weapon slot item first (including shields and off-hand)
     local isWeaponSlotItem = itemData.isWeaponSlotItem
@@ -916,7 +951,7 @@ end
 
 -- Returns true if the other item should be greeded
 local function GL_ShouldGreedOther(itemData)
-    local db = GreedyLoot.db.profile
+    local db = GL_GetActiveProfile()
     
     -- Always skip battle pets
     if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
@@ -999,6 +1034,16 @@ end
 
 -- Main decision function for auto-greed
 local function GL_ShouldAutoGreed(itemData)
+    -- Check if we should ignore all rules for Epic/Legendary items in raid
+    local db = GL_GetActiveProfile()
+    if db and db.ignoreRulesEpicLegendaryInRaid then
+        local itemQuality = itemData.quality
+        if itemQuality and (itemQuality == 4 or itemQuality == 5) and IsInRaid() then
+            -- Ignore all rules - don't greed
+            return false
+        end
+    end
+    
     -- Always skip battle pets
     if itemData.itemClassID == GreedyLoot.Constants.ITEM_CLASS.BATTLE_PET then
         return false
@@ -1059,9 +1104,9 @@ local function GL_HandleLootRoll(rollId)
         else
             shouldGreed = GL_ShouldGreedOther(itemData)
             if itemClassID == GreedyLoot.Constants.ITEM_CLASS.RECIPE then
-                maxQuality = GreedyLoot.db.profile.autoGreedRecipesMaxQuality
+                maxQuality = GL_GetActiveProfile().autoGreedRecipesMaxQuality
             else
-                maxQuality = GreedyLoot.db.profile.autoGreedOtherMaxQuality
+                maxQuality = GL_GetActiveProfile().autoGreedOtherMaxQuality
             end
         end
 
@@ -1088,10 +1133,12 @@ end
 function GreedyLoot:CONFIRM_ROLL(event, rollId, roll)
     local shouldConfirm = false
     
+    local db = GL_GetActiveProfile()
+    
     -- Check if auto-confirmation is enabled for this roll type
-    if roll == GreedyLoot.Constants.ROLL_TYPE.NEED and GreedyLoot.db.profile.autoConfirmNeed then
+    if roll == GreedyLoot.Constants.ROLL_TYPE.NEED and db.autoConfirmNeed then
         shouldConfirm = true
-    elseif roll == GreedyLoot.Constants.ROLL_TYPE.GREED and GreedyLoot.db.profile.autoConfirmGreed then
+    elseif roll == GreedyLoot.Constants.ROLL_TYPE.GREED and db.autoConfirmGreed then
         shouldConfirm = true
     end
     
